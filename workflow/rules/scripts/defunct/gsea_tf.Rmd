@@ -1,0 +1,114 @@
+---
+title: "TF GSEA"
+author:
+    - "Maxfield Kelsey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "report.Rmd"
+output:
+    html_document:
+        highlight: tango
+        theme: default
+        code_folding: hide
+        toc: yes
+        toc_depth: 3
+        toc_float: TRUE
+---
+
+```{R}
+library(magrittr)
+library(clusterProfiler)
+library(enrichplot)
+library(stringr)
+library(cowplot)
+library(pathview)
+library(ggplot2)
+library(tibble)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggbeeswarm)
+library(paletteer)
+library(UniProt.ws)
+
+
+```
+
+
+```{R}
+res <- read_csv("/users/mkelsey/data/senescence/results/agg/deseq2/star/condition_SEN_vs_PRO/results.csv")
+tf2gene = read_delim("/gpfs/data/jsedivy/mkelsey/ref/genesets/tf_gsea/tf2gene.tsv")
+```
+
+
+```{R}
+tf2gene <- tibble(tf = tf2gene$tf_name, gene = tf2gene$Gene_symbol)
+uniprot_ids = tf2gene %$% tf %>% head(n=3)
+
+# Load the required libraries
+
+# Set the UniProt.ws options
+up <- UniProt.ws(taxId = 9606)  # 9606 is the taxonomic ID for humans
+
+keytypes(up)
+# Convert Uniprot IDs to gene names
+
+gene_names <- UniProt.ws::select(up, keys = uniprot_ids, columns = c("Gene_Name"), keytype = "UniProtKB")
+
+# Print the result
+print(gene_names)
+
+
+
+```
+
+
+```{R}
+res <- res[order(-res$stat), ] %>% drop_na()
+ordered_gene_list <- res$stat
+names(ordered_gene_list) <- res$...1
+gse <- GSEA(ordered_gene_list, TERM2GENE = tf2gene, eps = 0, )
+```
+
+
+```{R}
+# k <- keys(org.Hs.eg.db, keytype = "UNIPROT")
+# uniprot2symbol <- AnnotationDbi::select(org.Hs.eg.db, keys = k, columns = c("SYMBOL"), keytype = "UNIPROT")
+# uniprot2symbol = tibble(uniprot2symbol)
+```
+
+```{R}
+# small = head(uniprot2symbol, n=200)
+```
+
+```{R}
+# wider_data <- uniprot2symbol %>%
+#   group_by(UNIPROT) %>%
+#   summarise(SYMBOL = paste(SYMBOL, collapse = ",")) %>%
+#   ungroup()
+
+# lj = left_join(wider_data, uniprot2symbol, by = "UNIPROT")
+# grep(",", x=lj$SYMBOL.x, value =TRUE)
+
+# uniprot2symbol = lj %>% select(c(1,2))
+# lj = left_join(tf2gene, uniprot2symbol, by = c("tf"="UNIPROT"))
+# tf2symbol = lj %>% select(1,2) %>% distinct()
+
+```
+
+
+```{R}
+outputdir = "results/agg/clusterprofiler/condition_SEN_vs_PRO/gsea"
+png(paste(outputdir, paste0("tf", ".png"), sep = "/"), width = 10, height = 6, units = "in", res = 300)
+print(gseaplot(gse, geneSetID = gset))
+dev.off()
+
+png(paste(outputdir, paste0("tfdotplot", ".png"), sep = "/"), width = 10, height = 9, units = "in", res = 300)
+print(dotplot(gse, showCategory = 30) + ggtitle("") + theme_cowplot())
+dev.off()
+
+png(paste(outputdir, paste0("tfridgeplot", ".png"), sep = "/"), width = 8, height = 12, units = "in", res = 300)
+print(ridgeplot(gse) + ggtitle(""))
+dev.off()
+
+```

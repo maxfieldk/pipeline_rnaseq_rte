@@ -1,0 +1,2 @@
+#! /bin/bash
+getorf -find 1 -minsize 700 -sequence /users/mkelsey/data/senescence/results/agg/repeatanalysis/telocal_multi/condition_SEN_vs_PRO/L1HS/deUP.fasta -outseq /users/mkelsey/data/senescence/results/agg/repeatanalysis/telocal_multi/condition_SEN_vs_PRO/L1HS/deUP.orf

@@ -1,0 +1,102 @@
+---
+title: "Shiny Report"
+author:
+    - "Maxfield Kelsey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "report.Rmd"
+runtime: shiny
+output:
+    html_document:
+        highlight: tango
+        theme: default
+        code_folding: hide
+        toc: yes
+        toc_depth: 3
+        toc_float: TRUE
+---
+## Header 1
+
+```{R packages, include = FALSE}
+library(knitr)
+library(rmarkdown)
+library(circlize)
+library(ComplexHeatmap)
+library(InteractiveComplexHeatmap)
+library("ggplot2")
+library("RColorBrewer")
+library("magrittr")
+library("cowplot")
+library("eulerr")
+library("ggVennDiagram")
+library("org.Hs.eg.db")
+library("ggrepel")
+library("grid")
+library("readr")
+library("stringr")
+library("dplyr")
+library("tibble")
+library("tidyr")
+library(plotly)
+library(DT)
+```
+
+
+```{R Load Data}
+resultsdf <- read_delim("/gpfs/data/jsedivy/mkelsey/senescence/results/agg/repeatanalysis/resultsdf.tsv", col_types = cols(Orf2Intact = col_character()))
+# resultsdf <- read_delim(snakemake@input[["resultsdf"]], col_types = cols(Orf2Intact = col_character()))
+```
+
+
+
+
+```{R heatmap}
+telocaltype <- "telocal_uniq"
+orf2intact <- resultsdf %>%
+    filter(tlt == telocaltype) %>%
+    filter(Orf2Intact == "intact")
+
+
+
+m <- orf2intact %>%
+    select(c(PRO1:PRO3, NT1:NT3)) %>%
+    as.matrix()
+
+rownames(m) <- orf2intact %$%
+    Geneid
+m <- na.omit(m)
+
+nrows <- rownames(m) %>% length()
+regions <- orf2intact %$%
+    region2
+row_ha <- rowAnnotation(Region = regions, col = list(region = c("Genic" = "brown", "Non-Genic" = "tan")))
+colsum <- colSums(m)
+conditions <- c("Proliferating", "Proliferating", "Proliferating", "Senescent", "Senescent", "Senescent")
+topAnn <- HeatmapAnnotation(Sum = anno_barplot(colsum, gp = gpar(fill = rep(c("blue", "red"), each = 3))), Condition = conditions, col = list(Condition = c("Proliferating" = "blue", "Senescent" = "red")))
+col_fun <- colorRamp2(c(0, 10, 150), c("white", "red", "blue"))
+lgd <- Legend(col_fun = col_fun, title = "Normalized Counts", at = c(0, 10, 50, 100, 150), legend_height = unit(6, "cm"))
+heatmaplegendlist <- list(lgd)
+heatmap <- m %>%
+    Heatmap(
+        name = "Gene Expression",
+        cluster_rows = TRUE,
+        show_row_dend = FALSE,
+        cluster_columns = TRUE,
+        show_heatmap_legend = FALSE,
+        col = col_fun,
+        show_row_names = FALSE,
+        show_column_names = TRUE,
+        border = TRUE,
+        row_split = regions,
+        column_names_rot = 0,
+        right_annotation = row_ha,
+        top_annotation = topAnn,
+        row_title = paste0("Intact L1HS (n = ", nrows, ")")
+    )
+draw(heatmap, heatmap_legend_side = "right", heatmap_legend_list = heatmaplegendlist)
+```
+
+```{R}
+draw(heatmap, heatmap_legend_side = "right", heatmap_legend_list = heatmaplegendlist)
+htShiny()
+```

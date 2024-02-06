@@ -46,7 +46,8 @@ tryCatch(
             "r_repeatmasker_annotation" = conf$r_repeatmasker_annotation
         ), env = globalenv())
         assign("inputs", list(
-            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
+            "vstresultsdf" = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
         ), env = globalenv())
         assign("outputs", list(
             "outfile" = "results/agg/repeatanalysis_telescope/plots.outfile.txt"
@@ -69,12 +70,17 @@ resultsdf <- resultsdf1 %>%
     left_join(r_annotation_fragmentsjoined) %>%
     left_join(r_repeatmasker_annotation)
 
+vstresultsdf1 <- read_delim(inputs$vstresultsdf, delim = "\t")
+vstresultsdf <- vstresultsdf1 %>%
+    left_join(r_annotation_fragmentsjoined) %>%
+    left_join(r_repeatmasker_annotation)
+
 ### ONTOLOGY DEFINITION
 {
     annot_colnames <- colnames(r_repeatmasker_annotation)
     annot_colnames_good <- annot_colnames[!(annot_colnames %in% c("gene_id", "family"))]
     ontologies <- annot_colnames_good[str_detect(annot_colnames_good, "family")]
-    smALL_ontologies <- ontologies[grepl("subfamily", ontologies)]
+    small_ontologies <- ontologies[grepl("subfamily", ontologies)]
 
     big_ontologies <- ontologies[!grepl("subfamily", ontologies)]
     big_ontology_groups <- c()
@@ -99,19 +105,27 @@ strictly_annotations <- annotations[!(annotations %in% c("gene_id", "family"))]
 colsToKeep <- c("gene_id", "family", pvals, l2fc, strictly_annotations)
 tidydf <- resultsdf %>%
     filter(tecounttype == tecounttype) %>%
-    select(ALL_of(colnames(resultsdf)[(colnames(resultsdf) %in% peptable$sample_name) | (colnames(resultsdf) %in% colsToKeep)])) %>%
+    select(all_of(colnames(resultsdf)[(colnames(resultsdf) %in% peptable$sample_name) | (colnames(resultsdf) %in% colsToKeep)])) %>%
     pivot_longer(cols = -colsToKeep) %>%
     rename(sample = name, counts = value) %>%
     mutate(condition = map_chr(sample, ~ map[[.]]))
 tidydf$condition <- factor(tidydf$condition, levels = conf$levels)
+
+vsttidydf <- vstresultsdf %>%
+    filter(tecounttype == tecounttype) %>%
+    select(all_of(colnames(resultsdf)[(colnames(resultsdf) %in% peptable$sample_name) | (colnames(resultsdf) %in% colsToKeep)])) %>%
+    pivot_longer(cols = -colsToKeep) %>%
+    rename(sample = name, counts = value) %>%
+    mutate(condition = map_chr(sample, ~ map[[.]]))
+vsttidydf$condition <- factor(tidydf$condition, levels = conf$levels)
 #### PLOTTING FUNCTIONS
 
 pvp <- function(df, facet_var = "ALL", filter_var = "ALL") {
     if (filter_var != "ALL") {
-        df <- df %>% filter(str_detect(!!sym(filter_var), ">|Intact"))
+        df <- df %>% filter(str_detect(!!sym(filter_var), ">|Intact|towards"))
     }
     p <- df %>%
-        group_by(across(ALL_of(c(colsToKeep, "condition")))) %>%
+        group_by(across(all_of(c(colsToKeep, "condition")))) %>%
         summarise(mean(counts), padj = dplyr::first(!!sym(contrast_padj))) %>%
         pivot_wider(names_from = condition, values_from = `mean(counts)`) %>%
         {
@@ -148,7 +162,7 @@ dep <- function(df, facet_var = "ALL", filter_var = "ALL") {
     }
     vars_for_facet <- c("direction", "n", facet_var_1)
     plotframe <- df %>%
-        group_by(across(ALL_of(c(colsToKeep, "condition")))) %>%
+        group_by(across(all_of(c(colsToKeep, "condition")))) %>%
         summarise(mean(counts), padj = dplyr::first(!!sym(contrast_padj))) %>%
         pivot_wider(names_from = condition, values_from = `mean(counts)`) %>%
         mutate(direction = ifelse(padj < 0.05, ifelse(!!sym(contrast_level_2) > !!sym(contrast_level_1), "UP", "DOWN"), "NS")) %>%
@@ -156,7 +170,7 @@ dep <- function(df, facet_var = "ALL", filter_var = "ALL") {
         mutate(direction = direction %>% factor(levels = c("UP", "DOWN", "NS"))) %>%
         ungroup() %>%
         mutate(n = n()) %>%
-        group_by(across(ALL_of(vars_for_facet))) %>%
+        group_by(across(all_of(vars_for_facet))) %>%
         summarise(count = n()) %>%
         mutate(fraction = count / n) %>%
         filter(direction != "NS")
@@ -337,6 +351,15 @@ for (contrast in contrasts) {
                             },
                             error = function(e) {
                                 print(sprintf("Error with  %s %s %s %s %s %s", tecounttype, contrast, group, function_name, filter_var, facet_var))
+                                print(e)
+                                tryCatch(
+                                    {
+                                        dev.off()
+                                    },
+                                    error = function(e) {
+                                        print(e)
+                                    }
+                                )
                             }
                         )
                     }
@@ -397,7 +420,7 @@ myheatmap <- function(df, facet_var = "ALL", filter_var = "ALL", DEvar = "ALL", 
             pull(!!sym(facet_var)) %>%
             unique()
         facet_var_values_len <- length(facet_var_values)
-        colors_for_facet <- c("#393939", "lightgray")
+        colors_for_facet <- c("#393939", "lightgray", "yellow", "green")
         row_ha <- rowAnnotation(Loc = group_res %>% pull(!!sym(facet_var)), DE = split_annot, col = list(DE = colors_for_de, Loc = setNames(colors_for_facet[1:facet_var_values_len], facet_var_values)))
         split_annot_df <- data.frame(de = split_annot, facet_var = group_res %>% pull(!!sym(facet_var)))
         hm <- m %>%
@@ -520,6 +543,14 @@ for (contrast in contrasts) {
                                     error = function(e) {
                                         print(sprintf("Error with  %s %s %s %s %s %s %s %s %s", tecounttype, contrast, group, function_name, ontology, filter_var, facet_var, DEvar, scaled))
                                         print(e)
+                                        tryCatch(
+                                            {
+                                                dev.off()
+                                            },
+                                            error = function(e) {
+                                                print(e)
+                                            }
+                                        )
                                     }
                                 )
                             }
@@ -603,6 +634,14 @@ tryCatch(
     error = function(e) {
         print(e)
         message("Venn diagrams failed - do you only have one contrast?")
+        tryCatch(
+            {
+                dev.off()
+            },
+            error = function(e) {
+                print(e)
+            }
+        )
     }
 )
 
@@ -622,7 +661,7 @@ tryCatch(
 
 tryCatch(
     {
-        old_gene_names <- read_delim("/users/mkelsey/data/ref/genomes/hs1/annotations6TldrDerived/refnonrefl1hspa2intact.bed")
+        old_t2t_refnonref_element_annotations <- read_delim("/users/mkelsey/data/ref/genomes/hs1/annotations6TldrDerived/refnonrefl1hspa2intact.bed")
         old_gene_names_gr <- old_t2t_refnonref_element_annotations %>%
             rename(seqnames = chr) %>%
             dplyr::select(gene_id, seqnames, start, end) %>%
@@ -639,12 +678,229 @@ tryCatch(
             tibble()
 
         write_csv(audrey_mapping, "/users/mkelsey/data/Audrey/forAudrey/refnonrefl1hspa2intact_RNASEQ_results.csv")
+
+        mapper <- audrey_mapping %>%
+            dplyr::select(old_gene_names_gr.gene_id, t2t_updated.gene_id) %>%
+            rename(old_gene_id = old_gene_names_gr.gene_id, gene_id = t2t_updated.gene_id)
+
+        compartment_rs1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_collapse_pro_RS.txt", col_names = FALSE)
+        compartment_rs <- compartment_rs1 %>%
+            dplyr::select(X4, X22) %>%
+            rename(old_gene_id = X4, compartment_rs = X22) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id)
+
+        compartment_ois1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_collapse_grow_RIS.txt", col_names = FALSE)
+        compartment_ois <- compartment_ois1 %>%
+            dplyr::select(X4, X22) %>%
+            rename(old_gene_id = X4, compartment_ois = X22) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id)
+
+        switches <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/switches_w_dir.txt", delim = "\t", col_names = FALSE) %>%
+            rename(subcompartment = X1, switch = X2)
+        subcompartment_rs1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_pro_sen_sub_collapsed.txt", col_names = FALSE)
+        subcompartment_rs <- subcompartment_rs1 %>%
+            dplyr::select(X4, X22) %>%
+            rename(old_gene_id = X4, subcompartment = X22) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id) %>%
+            left_join(switches) %>%
+            rename(switch_rs = switch) %>%
+            rename(subcompartment_rs = subcompartment) %>%
+            replace_na(list(switch_rs = "no change", hotspots_subcompartment = "not_hotspot_sub"))
+
+        subcompartment_ois1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_grow_RIS_collapsed_sub.txt", col_names = FALSE)
+        subcompartment_ois <- subcompartment_ois1 %>%
+            dplyr::select(X4, X22) %>%
+            rename(old_gene_id = X4, subcompartment = X22) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id) %>%
+            left_join(switches) %>%
+            rename(switch_ois = switch) %>%
+            rename(subcompartment_ois = subcompartment) %>%
+            replace_na(list(switch_ois = "no change", hotspots_subcompartment = "not_hotspot_sub"))
+
+
+        hotspots_compartment1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/l1_hotspots_ab.txt", delim = "\t", col_names = FALSE)
+        hotspots_compartment <- hotspots_compartment1 %>%
+            dplyr::select(X1) %>%
+            rename(old_gene_id = X1) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id) %>%
+            mutate(hotspots_compartment = "hotspot")
+
+        hotspots_subcompartment1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/l1_hotspot_sub.txt", delim = "\t", col_names = FALSE)
+        hotspots_subcompartment <- hotspots_subcompartment1 %>%
+            dplyr::select(X1) %>%
+            rename(old_gene_id = X1) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id) %>%
+            mutate(hotspots_subcompartment = "hotspot_sub")
+
+        audrey_annotations <- full_join(compartment_rs, compartment_ois) %>%
+            full_join(hotspots_compartment) %>%
+            full_join(hotspots_subcompartment) %>%
+            full_join(subcompartment_rs) %>%
+            full_join(subcompartment_ois) %>%
+            replace_na(list(hotspots_compartment = "not_hotspot", hotspots_subcompartment = "not_hotspot_sub")) %>%
+            mutate(motion_comp_rs = ifelse(str_detect(compartment_rs, "towards"), compartment_rs, "no change")) %>%
+            mutate(motion_comp_ois = ifelse(str_detect(compartment_ois, "towards"), compartment_ois, "no change"))
+        audrey_modifiers <- c("compartment_rs", "compartment_ois", "motion_comp_rs", "motion_comp_ois", "hotspots_compartment", "hotspots_subcompartment", "switch_rs", "switch_ois")
+
+
+
+        select_plots <- list()
+        for (vst in c("VST", "NORM")) {
+            for (contrast in contrasts) {
+                contrast_of_interest <- contrast
+                contrast_level_1 <- contrast_of_interest %>%
+                    str_split("_") %>%
+                    unlist() %>%
+                    .[4]
+                contrast_level_2 <- contrast_of_interest %>%
+                    str_split("_") %>%
+                    unlist() %>%
+                    .[2]
+                contrast_stat <- paste0("stat_", contrast_of_interest)
+                contrast_padj <- paste0("padj_", contrast_of_interest)
+                contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
+                contrast_samples <- peptable %>%
+                    filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
+                    pull(sample_name)
+                condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
+                groups_that_have_been_run <- c()
+                groups_not_to_run <- c("AluY")
+                for (group in c("L1HSvL1PA2")) {
+                    if (!(group %in% groups_that_have_been_run | group %in% groups_not_to_run | group %in% big_ontology_groups)) {
+                        groups_that_have_been_run <- c(groups_that_have_been_run, group)
+                        eligible_filter_modifiers <- "ALL"
+                        eligible_facet_modifiers <- c(audrey_modifiers, "ALL")
+                        eligible_modifier_combinations <- expand.grid(filter_var = eligible_filter_modifiers, facet_var = eligible_facet_modifiers, stringsAsFactors = FALSE)
+                        # first plots without any modifiers
+                        if (vst == "VST") {
+                            audrey_res <- left_join(audrey_annotations, vstresultsdf %>%
+                                filter(tecounttype == "telescope_multi") %>%
+                                filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+                            groupframe <- audrey_res
+                        } else {
+                            audrey_res <- left_join(audrey_annotations, resultsdf %>%
+                                filter(tecounttype == "telescope_multi") %>%
+                                filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+                            groupframe <- audrey_res
+                        }
+
+                        plotting_functions <- c("myheatmap")
+
+                        for (function_name in plotting_functions) {
+                            for (DEvar in c("ALL", "DE")) {
+                                for (scaled in c("notscaled", "scaled")) {
+                                    for (i in seq(1, length(rownames(eligible_modifier_combinations)))) {
+                                        filter_var <- "ALL"
+                                        facet_var <- eligible_modifier_combinations[i, ]$facet_var
+
+                                        plot_width <- 7
+                                        plot_height <- 7
+                                        if (DEvar != "ALL") {
+                                            plot_width <- 8
+                                        }
+                                        tryCatch(
+                                            {
+                                                function_current <- get(function_name)
+                                                p <- function_current(groupframe, filter_var = filter_var, facet_var = facet_var, DEvar = DEvar, scaled = scaled, contrast_samples = contrast_samples, condition_vec = condition_vec)
+                                                mysave(sprintf("%s/%s/%s/%s/%s/%s/%s_%s_%s_%s_%s.png", outputdir, "select_elements", vst, tecounttype, contrast, function_name, group, filter_var, facet_var, DEvar, scaled), plot_width, plot_height)
+                                                select_plots[[vst]][[tecounttype]][[contrast]][[group]][[function_name]][[filter_var]][[facet_var]][[DEvar]][[scaled]] <- p
+                                            },
+                                            error = function(e) {
+                                                print(sprintf("Error with  %s %s %s %s %s %s %s %s %s", tecounttype, contrast, group, function_name, ontology, filter_var, facet_var, DEvar, scaled))
+                                                print(e)
+                                                tryCatch(
+                                                    {
+                                                        dev.off()
+                                                    },
+                                                    error = function(e) {
+                                                        print(e)
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        plotting_functions <- c("stripp", "pvp", "dep")
+
+                        if (vst == "VST") {
+                            audrey_tidyres <- left_join(audrey_annotations, vsttidydf %>%
+                                filter(tecounttype == "telescope_multi") %>%
+                                filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+                            groupframe <- audrey_tidyres
+                        } else {
+                            audrey_tidyres <- left_join(audrey_annotations, tidydf %>%
+                                filter(tecounttype == "telescope_multi") %>%
+                                filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+                            groupframe <- audrey_tidyres
+                        }
+                        for (i in seq(1, length(rownames(eligible_modifier_combinations)))) {
+                            colsToKeep <- c("gene_id", "family", pvals, l2fc, strictly_annotations, audrey_modifiers)
+                            facet_var <- eligible_modifier_combinations[i, ]$facet_var
+                            if (!!sym(facet_var) != "ALL") {
+                                groupframe <- groupframe %>% filter(!!sym(facet_var) != ".")
+                            }
+                            for (function_name in plotting_functions) {
+                                tryCatch(
+                                    {
+                                        function_current <- get(function_name)
+                                        plot_width <- 5
+                                        plot_height <- 4
+                                        if (facet_var != "ALL") {
+                                            plot_width <- 8
+                                        }
+                                        if (filter_var != "ALL") {
+                                            plot_title <- groupframe %>%
+                                                pull(!!sym(filter_var)) %>%
+                                                unique() %>%
+                                                grep(">|Intact", ., value = TRUE)
+                                        } else {
+                                            plot_title <- group
+                                        }
+                                        p <- function_current(groupframe, filter_var = filter_var, facet_var = facet_var) + ggtitle(plot_title)
+
+                                        mysave(sprintf("%s/%s/%s/%s/%s/%s/%s_%s_%s.png", outputdir, "select_elements", vst, tecounttype, contrast, function_name, group, filter_var, facet_var), plot_width, plot_height)
+                                        select_plots[[vst]][[tecounttype]][[contrast]][[group]][[function_name]][[filter_var]][[facet_var]] <- p
+                                    },
+                                    error = function(e) {
+                                        print(sprintf("Error with  %s %s %s %s %s %s", tecounttype, contrast, group, function_name, filter_var, facet_var))
+                                        tryCatch(
+                                            {
+                                                dev.off()
+                                            },
+                                            error = function(e) {
+                                                print(e)
+                                            }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     },
     error = function(e) {
         print(e)
         message("Didn't run project specific code")
     }
 )
+
+
+
+
+
+
+
+resultsdf %>% filter(grepl("L1HS", gene_id)) %$% padj_condition_SEN_vs_PRO
 
 x <- data.frame()
 write.table(x, file = outputs$outfile, col.names = FALSE)

@@ -41,9 +41,7 @@ library(circlize)
                 "outputdir" = "results/agg/enrichment_analysis_repeats/telocal_multi",
                 "tecounttypes" = c("telescope_multi"),
                 "r_annotation_fragmentsjoined" = conf$r_annotation_fragmentsjoined,
-                "r_annotation_families" = conf$r_annotation_families,
-                "r_annotation_regions" = conf$r_annotation_regions,
-                "r_annotation_intactness" = conf$r_annotation_intactness
+                "r_repeatmasker_annotation" = conf$r_repeatmasker_annotation
             ), env = globalenv())
             assign("inputs", list(
                 "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
@@ -55,22 +53,17 @@ library(circlize)
     sample_table <- read_csv(params[["sample_table"]])
 }
 
+
 ## Load Data and add annotations
-resultsdf <- read_delim(inputs$resultsdf, delim = "\t")
+resultsdf1 <- read_delim(inputs$resultsdf, delim = "\t")
 r_annotation_fragmentsjoined <- read_csv(params$r_annotation_fragmentsjoined)
-r_annotation_families <- read_csv(params$r_annotation_families)
-r_annotation_regions <- read_csv(params$r_annotation_regions)
-r_annotation_intactness <- read_csv(params$r_annotation_intactness)
-
-resultsdf <- resultsdf %>%
-    left_join(r_annotation_fragmentsjoined, by = "gene_id") %>%
-    left_join(r_annotation_families) %>%
-    left_join(r_annotation_regions) %>%
-    left_join(r_annotation_intactness) %>%
-    dplyr::mutate(intactness = replace_na(intactness, "ORFs_NotIntact"))
+r_repeatmasker_annotation <- read_csv(params$r_repeatmasker_annotation)
+resultsdf <- resultsdf1 %>%
+    left_join(r_annotation_fragmentsjoined) %>%
+    left_join(r_repeatmasker_annotation)
 
 
-ontologies <- colnames(r_annotation_families)[!(colnames(r_annotation_families) %in% c("gene_id", "family"))]
+ontologies <- colnames(r_repeatmasker_annotation)[!(colnames(r_repeatmasker_annotation) %in% c("gene_id", "family"))]
 small_ontologies <- ontologies[grepl("subfamily", ontologies)]
 big_ontologies <- ontologies[!grepl("subfamily", ontologies)]
 
@@ -102,7 +95,7 @@ for (contrast in params[["contrasts"]]) {
     for (ontology in ontologies) {
         tryCatch(
             {
-                genesets <- r_annotation_families %>%
+                genesets <- resultsdf %>%
                     select(!!sym(ontology), gene_id) %>%
                     filter(!!sym(ontology) != "Other")
                 gse <- GSEA(ordered_by_stat, TERM2GENE = genesets, eps = 0, maxGSSize = 10000, minGSSize = 1)

@@ -1,7 +1,6 @@
 rule mycoplasmaCheck:
     input:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
-        r2 = "outs/{sample}/trimmedReads/{sample}_2.trimmed.fastq.gz"
     output:
         sam = "qc/mycoplasma/mycoplasma{sample}.sam"
     threads: 12
@@ -12,14 +11,14 @@ rule mycoplasmaCheck:
     shell:
         """
 mkdir -p $(dirname {output.sam})
-bowtie2 --threads 10 -x /users/mkelsey/data/ref/genomes/mycoplasma/mycoplasma_index -1 {input.r1} -2 {input.r2} -S {output.sam}
+bowtie2 --threads 10 -x /users/mkelsey/data/ref/genomes/mycoplasma/mycoplasma_index -1 {input.r1} -S {output.sam}
 samtools stats {output.sam} > {output.sam}.stats.txt
         """
 
 
-rule inferLibraryType:
+checkpoint inferLibraryType:
     input:
-        bam = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples[1])
+        bam = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples[0])
     output:
         librarytype = "qc/library_type.txt"
     params:

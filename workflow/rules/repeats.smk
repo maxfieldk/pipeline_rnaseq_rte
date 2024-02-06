@@ -96,34 +96,37 @@ telescope assign \
 #         """
 
 
-rule repeatanalysis:
-    input:
-        deseq = expand("results/agg/deseq2/{counttype}/{contrast}/{resulttype}.csv", counttype = config["counttypes"], contrast = config["contrasts"], resulttype = ["results", "counttablesizenormed", "rlogcounts"]),
-    params:
-        inputdir = "results/agg/deseq",
-        outputdir = "results/agg/repeatanalysis"
-    conda:
-        "repeatanalysis"
-    resources:
-        cpus_per_task =10,
-        mem_mb = 164000,
-        runtime = 300
-    log:
-        "logs/agg/repeatanalysis.log"
-    output:
-        DETEsbyContrast = "results/agg/repeatanalysis/allactiveDETEs.tsv",
-        resultsdf = "results/agg/repeatanalysis/resultsdf.tsv",
-        sigAluYs = "results/agg/repeatanalysis/sigAluYs.tsv",
-        sigL1s = "results/agg/repeatanalysis/sigL1s.tsv",
-        sigHERVKs = "results/agg/repeatanalysis/sigHERVKs.tsv",
-        outfile = "results/agg/repeatanalysis/outfile.txt"
-    script:
-        "scripts/repeatanalysis.R"
+# rule repeatanalysis:
+#     input:
+#         deseq = expand("results/agg/deseq2/{counttype}/{contrast}/{resulttype}.csv", counttype = config["counttypes"], contrast = config["contrasts"], resulttype = ["results", "counttablesizenormed", "rlogcounts"]),
+#     params:
+#         inputdir = "results/agg/deseq",
+#         outputdir = "results/agg/repeatanalysis"
+#     conda:
+#         "repeatanalysis"
+#     resources:
+#         cpus_per_task =10,
+#         mem_mb = 164000,
+#         runtime = 300
+#     log:
+#         "logs/agg/repeatanalysis.log"
+#     output:
+#         DETEsbyContrast = "results/agg/repeatanalysis/allactiveDETEs.tsv",
+#         resultsdf = "results/agg/repeatanalysis/resultsdf.tsv",
+#         vstresultsdf = "results/agg/repeatanalysis/resultsdfvst.tsv",
+#         sigAluYs = "results/agg/repeatanalysis/sigAluYs.tsv",
+#         sigL1s = "results/agg/repeatanalysis/sigL1s.tsv",
+#         sigHERVKs = "results/agg/repeatanalysis/sigHERVKs.tsv",
+#         outfile = "results/agg/repeatanalysis/outfile.txt"
+#     script:
+#         "scripts/repeatanalysis.R"
 
 
 rule repeatanalysis_telescope:
     input:
-        deseq = expand("results/agg/deseq_telescope/{tecounttypes}/{contrast}/results.csv", tecounttypes = config["tecounttypes"], contrast = config["contrasts"]),
+        results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
+        counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"]),
+        counts_vst = expand("results/agg/deseq_telescope/{tecounttype}/vstcounts.csv",  tecounttype = config["tecounttypes"])
     params:
         inputdir = "results/agg/deseq_telescope",
         outputdir = "results/agg/repeatanalysis_telescope"
@@ -134,13 +137,15 @@ rule repeatanalysis_telescope:
         mem_mb = 164000,
         runtime = 300
     output:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
+        vstresultsdf = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
     script:
         "scripts/repeatanalysis.R"
 
 rule repeatanalysis_plots:
     input:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
+        vstresultsdf = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
     params:
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
         repeatmasker_annotation = config["r_repeatmasker_annotation"],
@@ -150,7 +155,7 @@ rule repeatanalysis_plots:
         inputdir = "results/agg/deseq_telescope",
         outputdir = "results/agg/repeatanalysis_telescope"
     conda:
-        "evo2"
+        "repeatanalysis"
     resources:
         cpus_per_task =10,
         mem_mb = 164000,

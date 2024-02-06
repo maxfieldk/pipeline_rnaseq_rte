@@ -27,9 +27,7 @@ rule enrichment_analysis_repeats:
     params:
         inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.resultsdf[0])),
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
-        r_annotation_families = config["r_annotation_families"],
-        r_annotation_regions = config["r_annotation_regions"],
-        r_annotation_intactness = config["r_annotation_intactness"],
+        r_repeatmasker_annotation = config["r_repeatmasker_annotation"],
         contrasts = config["contrasts"],
         tecounttypes = config["tecounttypes"],
         sample_table = config["sample_table"],

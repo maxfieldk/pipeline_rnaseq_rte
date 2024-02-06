@@ -37,6 +37,8 @@ rule deseq_telescope:
         runtime = 1000
     conda: "deseq"
     output:
-        results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/{resulttype}.csv", contrast = config["contrasts"], resulttype = ["results", "counttablesizenormed"])
+        results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results.csv", contrast = config["contrasts"]),
+        counts_normed = "results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv",
+        counts_vst = "results/agg/deseq_telescope/{tecounttype}/vstcounts.csv"
     script:
         "scripts/deseq_telescope.R"

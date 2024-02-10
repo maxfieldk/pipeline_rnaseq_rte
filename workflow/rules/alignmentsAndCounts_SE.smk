@@ -1,5 +1,5 @@
 
-rule alignSTAR:
+rule alignSTAR_SE:
     input:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
         # r2 = "outs/{sample}/trimmedReads/{sample}_2.trimmed.fastq.gz"
@@ -20,7 +20,7 @@ STAR --genomeDir {params.index} --readFilesCommand zcat --readFilesIn {input.r1}
 
 
 
-rule featurecounts_genes:
+rule featurecounts_genes_SE:
     input:
         sortedSTARbams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),
         libtype = "qc/library_type.txt"
@@ -47,7 +47,7 @@ featureCounts -T {threads} -B -O -a {params.gtf} -o {output.metafeaturecounts} {
 
 
 
-rule featurecounts_genesandrtes:
+rule featurecounts_genesandrtes_SE:
 #for non-telocal based counts for RTEs
     input:
         sortedSTARbams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),

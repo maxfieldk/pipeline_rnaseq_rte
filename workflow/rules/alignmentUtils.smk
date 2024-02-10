@@ -30,6 +30,6 @@ rule common_filterForPrimaryAlignments:
         "omics"
     shell: 
         """
-samtools view -b -F 256 {input} > {output.bam}
+samtools view -b -F 0x800 -F 0x100 -F 0x400 {input} > {output.bam}
 samtools index {output.bam}
         """ 

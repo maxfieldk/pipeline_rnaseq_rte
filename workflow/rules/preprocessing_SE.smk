@@ -19,7 +19,7 @@ rule fastqdump:
         "omics"
     shell: "fastq-dump --split-files --outdir {params.outdir} {input} 2> {log}"
 
-rule fastp:
+rule fastp_SE:
     input:
         r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R1"].iloc[0],
         # r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R2"].iloc[0]

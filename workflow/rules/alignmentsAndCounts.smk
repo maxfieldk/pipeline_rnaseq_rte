@@ -1,5 +1,4 @@
-
-rule alignSTAR:
+rule alignSTAR_PE:
     input:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
         r2 = "outs/{sample}/trimmedReads/{sample}_2.trimmed.fastq.gz"
@@ -21,36 +20,43 @@ rule alignSTAR:
 STAR --genomeDir {params.index} --readFilesCommand zcat --readFilesIn {input.r1} {input.r2} --outFileNamePrefix {params.outdir} --runThreadN {threads} --winAnchorMultimapNmax 100 --outFilterMultimapNmax 100 > {log.out} 2> {log.err}
         """
 
-
-
-rule featurecounts_genes:
+rule featurecounts_genes_PE:
     input:
-        sortedSTARbams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),
-        libtype = "qc/library_type.txt"
+        primaryBams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),
+        libtype = "qc/library_type.txt",
     output:
         countsmessy = "outs/agg/featurecounts_genes/counts_messy.txt",
         counts = "outs/agg/featurecounts_genes/counts.txt",
-        countsstrandnonspecificmessy = "outs/agg/featurecounts_genes/countsstrandnonspecific_messy.txt",
-        countsstrandnonspecific = "outs/agg/featurecounts_genes/countsstrandnonspecific.txt",
-        metafeaturecounts = "outs/agg/featurecounts_genes/metafeature.counts.txt"
+        readassignment = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam.featureCounts", sample = samples)
+
     params: 
         gtf = config['annotation_genes'],
         featureCountsstrandparam = getFeatureCountsStrandParam()
-    conda:
-        "omics"
+    conda: "omics"
     threads: 4
     shell: 
         """
-featureCounts -p -s {params.featureCountsstrandparam} -T {threads} -t exon -a {params.gtf} -o {output.countsmessy} {input.sortedSTARbams}
+featureCounts -p -s {params.featureCountsstrandparam} -O -T {threads} -t exon -a {params.gtf} -o {output.countsmessy} -R CORE  --minOverlap 25 --fraction --primary {input.primaryBams}
 cut -f1,7- {output.countsmessy} | awk 'NR > 1' > {output.counts}
-featureCounts -p -s {params.featureCountsstrandparam} -T {threads} -B -O -a {params.gtf} -o {output.countsstrandnonspecificmessy} {input.sortedSTARbams}
-cut -f1,7- {output.countsstrandnonspecificmessy} | awk 'NR > 1' > {output.countsstrandnonspecific}
-featureCounts -p -T {threads} -B -O -a {params.gtf} -o {output.metafeaturecounts} {input.sortedSTARbams}
+        """
+
+rule filtertogetbamofnofeaturealignments:
+    input:
+        readassignment = "outs/{sample}/star_output/{sample}.sorted.primary.bam.featureCounts",
+        sortedBam = "outs/agg/featurecounts_genes/{sample}.sorted.bam"
+    output:
+        nofeaturefilteredbam = "outs/agg/featurecounts_genes/{sample}.sorted.nofeaturefiltered.bam"
+    conda:
+        "omics"
+    shell:
+        """
+awk '$2 ~ /Unassigned_NoFeatures/ {{print $1}}' {input.readassignment} > {input.readassignment}.nofeatureIDs.txt
+samtools view -b -N {input.readassignment}.nofeatureIDs.txt -o {output.nofeaturefilteredbam} {input.sortedBam}
+samtools stats {output.nofeaturefilteredbam} > {output.nofeaturefilteredbam}.stats
         """
 
 
-
-rule featurecounts_genesandrtes:
+rule featurecounts_genesandrtes_PE:
 #for non-telocal based counts for RTEs
     input:
         sortedSTARbams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),

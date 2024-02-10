@@ -272,106 +272,6 @@ stripp <- function(df, stats = "yes", extraGGoptions = NULL, facet_var = "ALL", 
 # mysave("temp1.png")
 
 
-#### PLOTTING
-plots <- list()
-for (contrast in contrasts) {
-    contrast_of_interest <- contrast
-    contrast_level_1 <- contrast_of_interest %>%
-        str_split("_") %>%
-        unlist() %>%
-        .[4]
-    contrast_level_2 <- contrast_of_interest %>%
-        str_split("_") %>%
-        unlist() %>%
-        .[2]
-    contrast_stat <- paste0("stat_", contrast_of_interest)
-    contrast_padj <- paste0("padj_", contrast_of_interest)
-    contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
-    contrast_samples <- peptable %>%
-        filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
-        pull(sample_name)
-    condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
-    groups_that_have_been_run <- c()
-    groups_not_to_run <- c()
-    for (ontology in ontologies) {
-        ontology_groups <- r_repeatmasker_annotation %>%
-            pull(!!sym(ontology)) %>%
-            unique()
-        ontology_groups <- ontology_groups[ontology_groups != "Other"]
-        for (group in ontology_groups) {
-            if (!(group %in% groups_that_have_been_run | group %in% groups_not_to_run | group %in% big_ontology_groups)) {
-                groups_that_have_been_run <- c(groups_that_have_been_run, group)
-                groupframe <- tidydf %>% filter(!!sym(ontology) == group)
-                eligible_modifiers <- c()
-                for (modifier in modifiers) {
-                    values_present <- tidydf %>%
-                        filter(!!sym(ontology) == group) %>%
-                        pull(!!sym(modifier)) %>%
-                        unique()
-                    if ((length(values_present) > 1) | !("Other" %in% values_present)) {
-                        eligible_modifiers <- c(eligible_modifiers, modifier)
-                    }
-                }
-                for (modifier in eligible_modifiers) {
-                    values_present <- resultsdf %>%
-                        filter(!!sym(ontology) == group) %>%
-                        pull(!!sym(modifier)) %>%
-                        unique()
-                    if ((length(values_present) > 1) | !("Other" %in% values_present)) {
-                        eligible_modifiers <- c(eligible_modifiers, modifier)
-                    }
-                    eligible_filter_modifiers <- c(eligible_modifiers[grepl("_req$", eligible_modifiers)], "ALL")
-                    eligible_facet_modifiers <- c(eligible_modifiers[grepl("_loc$", eligible_modifiers)], "ALL")
-                    eligible_modifier_combinations <- expand.grid(filter_var = eligible_filter_modifiers, facet_var = eligible_facet_modifiers, stringsAsFactors = FALSE)
-                }
-                for (i in seq(1, length(rownames(eligible_modifier_combinations)))) {
-                    filter_var <- eligible_modifier_combinations[i, ]$filter_var
-                    facet_var <- eligible_modifier_combinations[i, ]$facet_var
-                    plotting_functions <- c("stripp", "pvp", "dep")
-                    for (function_name in plotting_functions) {
-                        tryCatch(
-                            {
-                                function_current <- get(function_name)
-                                plot_width <- 5
-                                plot_height <- 4
-                                if (facet_var != "ALL") {
-                                    plot_width <- 8
-                                }
-                                if (filter_var != "ALL") {
-                                    plot_title <- groupframe %>%
-                                        pull(!!sym(filter_var)) %>%
-                                        unique() %>%
-                                        grep(">|Intact", ., value = TRUE)
-                                } else {
-                                    plot_title <- group
-                                }
-                                p <- function_current(groupframe, filter_var = filter_var, facet_var = facet_var) + ggtitle(plot_title)
-                                mysave(sprintf("%s/%s/%s/%s/%s_%s_%s.png", outputdir, tecounttype, contrast, function_name, group, filter_var, facet_var), plot_width, plot_height)
-                                plots[[tecounttype]][[contrast]][[group]][[function_name]][[filter_var]][[facet_var]] <- p
-                            },
-                            error = function(e) {
-                                print(sprintf("Error with  %s %s %s %s %s %s", tecounttype, contrast, group, function_name, filter_var, facet_var))
-                                print(e)
-                                tryCatch(
-                                    {
-                                        dev.off()
-                                    },
-                                    error = function(e) {
-                                        print(e)
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-# Heatmaps
-
-
 myheatmap <- function(df, facet_var = "ALL", filter_var = "ALL", DEvar = "ALL", scaled = "notscaled", contrast_samples, condition_vec) {
     set_title <- group
     if (filter_var != "ALL") {
@@ -473,6 +373,107 @@ myheatmap <- function(df, facet_var = "ALL", filter_var = "ALL", DEvar = "ALL", 
 #     filter(tecounttype == tecounttype)
 # p <- myheatmap(groupframe, facet_var = "genic_loc", filter_var = "rte_length_req", DEvar = "DE", scaled = "notscaled", contrast_samples = contrast_samples, condition_vec = condition_vec)
 # mysave("temp1.png", 8, 8)
+
+
+
+#### PLOTTING
+plots <- list()
+for (contrast in contrasts) {
+    contrast_of_interest <- contrast
+    contrast_level_1 <- contrast_of_interest %>%
+        str_split("_") %>%
+        unlist() %>%
+        .[4]
+    contrast_level_2 <- contrast_of_interest %>%
+        str_split("_") %>%
+        unlist() %>%
+        .[2]
+    contrast_stat <- paste0("stat_", contrast_of_interest)
+    contrast_padj <- paste0("padj_", contrast_of_interest)
+    contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
+    contrast_samples <- peptable %>%
+        filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
+        pull(sample_name)
+    condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
+    groups_that_have_been_run <- c()
+    groups_not_to_run <- c()
+    for (ontology in ontologies) {
+        ontology_groups <- r_repeatmasker_annotation %>%
+            pull(!!sym(ontology)) %>%
+            unique()
+        ontology_groups <- ontology_groups[ontology_groups != "Other"]
+        for (group in ontology_groups) {
+            if (!(group %in% groups_that_have_been_run | group %in% groups_not_to_run | group %in% big_ontology_groups)) {
+                groups_that_have_been_run <- c(groups_that_have_been_run, group)
+                groupframe <- tidydf %>% filter(!!sym(ontology) == group)
+                eligible_modifiers <- c()
+                for (modifier in modifiers) {
+                    values_present <- tidydf %>%
+                        filter(!!sym(ontology) == group) %>%
+                        pull(!!sym(modifier)) %>%
+                        unique()
+                    if ((length(values_present) > 1) | !("Other" %in% values_present)) {
+                        eligible_modifiers <- c(eligible_modifiers, modifier)
+                    }
+                }
+                for (modifier in eligible_modifiers) {
+                    values_present <- resultsdf %>%
+                        filter(!!sym(ontology) == group) %>%
+                        pull(!!sym(modifier)) %>%
+                        unique()
+                    if ((length(values_present) > 1) | !("Other" %in% values_present)) {
+                        eligible_modifiers <- c(eligible_modifiers, modifier)
+                    }
+                    eligible_filter_modifiers <- c(eligible_modifiers[grepl("_req$", eligible_modifiers)], "ALL")
+                    eligible_facet_modifiers <- c(eligible_modifiers[grepl("_loc$", eligible_modifiers)], "ALL")
+                    eligible_modifier_combinations <- expand.grid(filter_var = eligible_filter_modifiers, facet_var = eligible_facet_modifiers, stringsAsFactors = FALSE)
+                }
+                for (i in seq(1, length(rownames(eligible_modifier_combinations)))) {
+                    filter_var <- eligible_modifier_combinations[i, ]$filter_var
+                    facet_var <- eligible_modifier_combinations[i, ]$facet_var
+                    plotting_functions <- c("stripp", "pvp", "dep")
+                    for (function_name in plotting_functions) {
+                        tryCatch(
+                            {
+                                function_current <- get(function_name)
+                                plot_width <- 5
+                                plot_height <- 4
+                                if (facet_var != "ALL") {
+                                    plot_width <- 8
+                                }
+                                if (filter_var != "ALL") {
+                                    plot_title <- groupframe %>%
+                                        pull(!!sym(filter_var)) %>%
+                                        unique() %>%
+                                        grep(">|Intact", ., value = TRUE)
+                                } else {
+                                    plot_title <- group
+                                }
+                                p <- function_current(groupframe, filter_var = filter_var, facet_var = facet_var) + ggtitle(plot_title)
+                                mysave(sprintf("%s/%s/%s/%s/%s_%s_%s.png", outputdir, tecounttype, contrast, function_name, group, filter_var, facet_var), plot_width, plot_height)
+                                plots[[tecounttype]][[contrast]][[group]][[function_name]][[filter_var]][[facet_var]] <- p
+                            },
+                            error = function(e) {
+                                print(sprintf("Error with  %s %s %s %s %s %s", tecounttype, contrast, group, function_name, filter_var, facet_var))
+                                print(e)
+                                tryCatch(
+                                    {
+                                        dev.off()
+                                    },
+                                    error = function(e) {
+                                        print(e)
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Heatmaps
 
 
 
@@ -699,6 +700,8 @@ tryCatch(
 
         switches <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/switches_w_dir.txt", delim = "\t", col_names = FALSE) %>%
             rename(subcompartment = X1, switch = X2)
+        swtices_score <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/switches_score.tsv", delim = "\t", col_names = FALSE) %>%
+            rename(subcompartment = X1, switch_rs_score = X2)
         subcompartment_rs1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_pro_sen_sub_collapsed.txt", col_names = FALSE)
         subcompartment_rs <- subcompartment_rs1 %>%
             dplyr::select(X4, X22) %>%
@@ -706,9 +709,11 @@ tryCatch(
             left_join(mapper) %>%
             select(-old_gene_id) %>%
             left_join(switches) %>%
+            left_join(swtices_score) %>%
             rename(switch_rs = switch) %>%
             rename(subcompartment_rs = subcompartment) %>%
             replace_na(list(switch_rs = "no change", hotspots_subcompartment = "not_hotspot_sub"))
+
 
         subcompartment_ois1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/240129_refnonref_grow_RIS_collapsed_sub.txt", col_names = FALSE)
         subcompartment_ois <- subcompartment_ois1 %>%
@@ -738,20 +743,31 @@ tryCatch(
             select(-old_gene_id) %>%
             mutate(hotspots_subcompartment = "hotspot_sub")
 
+
+        loop_S1 <- read_delim("/users/mkelsey/data/Audrey/fromAudrey/l1_S_dist.txt", delim = "\t", col_names = FALSE)
+        loop_S <- loop_S1 %>%
+            rename(old_gene_id = X4, distance_to_loop = X24) %>%
+            mutate(InSenUniqueLoop = ifelse(distance_to_loop > 0, "Outside", "Inside")) %>%
+            dplyr::select(old_gene_id, InSenUniqueLoop) %>%
+            left_join(mapper) %>%
+            select(-old_gene_id)
+
+
         audrey_annotations <- full_join(compartment_rs, compartment_ois) %>%
             full_join(hotspots_compartment) %>%
             full_join(hotspots_subcompartment) %>%
             full_join(subcompartment_rs) %>%
             full_join(subcompartment_ois) %>%
+            full_join(loop_S) %>%
             replace_na(list(hotspots_compartment = "not_hotspot", hotspots_subcompartment = "not_hotspot_sub")) %>%
             mutate(motion_comp_rs = ifelse(str_detect(compartment_rs, "towards"), compartment_rs, "no change")) %>%
             mutate(motion_comp_ois = ifelse(str_detect(compartment_ois, "towards"), compartment_ois, "no change"))
-        audrey_modifiers <- c("compartment_rs", "compartment_ois", "motion_comp_rs", "motion_comp_ois", "hotspots_compartment", "hotspots_subcompartment", "switch_rs", "switch_ois")
+        audrey_modifiers <- c("compartment_rs", "compartment_ois", "motion_comp_rs", "motion_comp_ois", "hotspots_compartment", "hotspots_subcompartment", "switch_rs", "switch_rs_score", "switch_ois", "InSenUniqueLoop")
 
 
 
         select_plots <- list()
-        for (vst in c("VST", "NORM")) {
+        for (vst in c("NORM")) {
             for (contrast in contrasts) {
                 contrast_of_interest <- contrast
                 contrast_level_1 <- contrast_of_interest %>%
@@ -896,6 +912,139 @@ tryCatch(
 
 
 
+
+colnames(groupframe)
+pf <- groupframe %>%
+    group_by(gene_id, condition) %>%
+    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = condition, values_from = counts) %>%
+    mutate(difSmP = SEN - PRO)
+
+summarydf <- pf %>%
+    group_by(switch_rs_score) %>%
+    summarise(
+        n = n(),
+        mean = mean(difSmP),
+        sd = sd(difSmP)
+    ) %>%
+    mutate(se = sd / sqrt(n)) %>%
+    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+    ungroup()
+
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = subcomp, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = subcomp, y = mean), shape = 19) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp1.png", 6, 4)
+
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = switch_rs_score, y = mean), shape = 19) +
+    geom_smooth(aes(x = switch_rs_score, y = difSmP), method = "lm", se = FALSE) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp1.1.png", 6, 4)
+
+p <- pf %>%
+    mutate(Significance = ifelse(is.na(pval), "ns", ifelse(pval < 0.05, "Padj < 0.05", "ns"))) %>%
+    mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
+    ggplot() +
+    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = Significance, size = size_var), width = 0.1) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
+    mythemecolor1 +
+    scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp1.1.png", 4, 4)
+
+p <- pf %>%
+    mutate(shape_var = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "Padj < 0.05", "NS"))) %>%
+    mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
+    ggplot() +
+    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = shape_var), width = 0.1) +
+    geom_hline(yintercept = 0) +
+    geom_vline(xintercept = 0) +
+    labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
+    mythemecolor +
+    scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp1.2.png", 3, 3)
+
+p <- summarydf %>%
+    ggplot() +
+    geom_bar(aes(x = subcomp, y = mean), stat = "identity") +
+    geom_errorbar(aes(x = subcomp, ymin = mean - se, ymax = mean + se), width = 0.2) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp2.png", 2, 4)
+
+
+pf <- groupframe %>%
+    group_by(gene_id, condition) %>%
+    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = condition, values_from = counts) %>%
+    mutate(difSmP = SEN - PRO) %>%
+    mutate(group = sprintf("%s | %s", subcomp, loop))
+
+
+summarydf <- pf %>%
+    group_by(group) %>%
+    summarise(
+        n = n(),
+        mean = mean(difSmP),
+        sd = sd(difSmP)
+    ) %>%
+    mutate(se = sd / sqrt(n)) %>%
+    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+    ungroup() %>%
+    mutate(group = paste0(group, " (n = ", n, ")"))
+
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = group, y = difSmP, color = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp3.png", 8, 4)
+
+p <- summarydf %>%
+    ggplot() +
+    geom_errorbar(aes(x = group, ymin = 0, ymax = mean + se), width = 0.2) +
+    geom_bar(aes(x = group, y = mean), stat = "identity") +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+    anchorbar +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp4.png", 3, 4)
 
 
 

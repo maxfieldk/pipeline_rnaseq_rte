@@ -28,8 +28,7 @@ tryCatch(
             "outputdir" = "results/agg/repeatanalysis_telescope"
         ), env = globalenv())
         assign("outputs", list(
-            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
-            "vstresultsdf" = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
+            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
         ), env = globalenv())
     }
 )
@@ -84,58 +83,19 @@ for (tecounttype in tecounttypes) {
 ddsfinal <- bind_rows(RESLIST)
 
 COUNTLIST <- list()
-VSTCOUNTLIST <- list()
 for (tecounttype in tecounttypes) {
     conditions <- peptable$condition %>% unique()
-    ddscounts <- read_csv(paste(params$inputdir, tecounttype, "counttablesizenormed.csv", sep = "/"))
-    ddsvstcounts <- read_csv(paste(params$inputdir, tecounttype, "vstcounts.csv", sep = "/"))
-    colnames(ddscounts)[1] <- "gene_id"
-    colnames(ddsvstcounts)[1] <- "gene_id"
-    avoidzero <- 1
-    meancols <- c()
-    log2meancols <- c()
-    vstmeancols <- c()
-    for (condition in conditions) {
-        condition_samples <- filter(peptable, condition == {{ condition }})$sample_name
-        s <- ""
-        for (e in condition_samples) {
-            if (s == "") {
-                s <- paste0("`", e, "`")
-            } else {
-                s <- paste0(s, "+", "`", e, "`")
-            }
-        }
-        s <- paste0("(", s, ")", "/", length(condition_samples))
-        meancol <- paste0(condition, "mean")
-        ddscounts <- ddscounts %>% mutate({{ meancol }} := eval(parse(text = s)))
-        vstmeancol <- paste0("vst", condition, "mean")
-        ddsvstcounts <- ddsvstcounts %>% mutate({{ vstmeancol }} := eval(parse(text = s)))
-        log2meancol <- paste0("log2", condition, "mean")
-        ddscounts <- ddscounts %>% mutate({{ log2meancol }} := log2(.data[[meancol]] + avoidzero))
-        meancols <- c(meancols, meancol)
-        log2meancols <- c(log2meancols, log2meancol)
-        vstmeancols <- c(vstmeancols, vstmeancol)
-    }
-    vstcolumns_to_retain <- c("gene_id", vstmeancols)
-    log2sub <- ddscounts
-    vstsub <- ddsvstcounts[, vstcolumns_to_retain]
-    log2sub <- log2sub %>% mutate(tecounttype = tecounttype)
-    countres <- merge(log2sub, vstsub, by = "gene_id")
-    COUNTLIST[[tecounttype]] <- countres
-    ddsvstcounts <- ddsvstcounts %>% mutate(tecounttype = tecounttype)
-    VSTCOUNTLIST[[tecounttype]] <- ddsvstcounts
+    ddscounts <- read_csv(paste(params$inputdir, tecounttype, "counttablesizenormed.csv", sep = "/")) %>%
+        rename(gene_id = ...1) %>%
+        mutate(tecounttype = tecounttype)
+    COUNTLIST[[tecounttype]] <- ddscounts
 }
 countsfinal <- bind_rows(COUNTLIST)
-vstcountsfinal <- bind_rows(VSTCOUNTLIST)
 # merge counts and dds, then add TE annotations
 
 
 # merge counts and dds, then add TE annotations
-resultsdf <- merge(ddsfinal, countsfinal, by = c("gene_id", "tecounttype")) %>% tibble()
-vstresultsdf <- merge(ddsfinal, vstcountsfinal, by = c("gene_id", "tecounttype")) %>% tibble()
-
-####### GOT HERE
+resultsdf <- full_join(ddsfinal, countsfinal, by = c("gene_id", "tecounttype"))
 
 
 write_tsv(resultsdf, outputs$resultsdf)
-write_tsv(vstresultsdf, outputs$vstresultsdf)

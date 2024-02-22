@@ -2,7 +2,13 @@ import os
 import pandas as pd
 from pathlib import Path
 
-#FILE STRUCTURE
+samples = config["samples"]
+telocaltypes = config["telocaltypes"]
+contrasts = config["contrasts"]
+counttypes = config["counttypes"]
+peptable = pd.read_csv("conf/private/peptable.csv")
+
+#tag FILESTRUCTURE
 paths = [
     "qc",
     "qc/{sample}",
@@ -24,9 +30,55 @@ for path in paths:
             for tecounttype in config["tecounttypes"]:
                 for contrast in config["contrasts"]:
                     os.makedirs(path.format(sample=sample, counttype=counttype,tecounttype=tecounttype, contrast=contrast), exist_ok = True)
+#tag FUNCTIONS
+def inferLibraryType():
+        try: 
+                with open("qc/library_type.txt") as f:
+                        data = f.read()
+                lines = re.findall('Fraction.*', data)
+                pctMapped = [float(line.split(": ")[1]) for line in lines]
+                if pctMapped[1] > 0.75:
+                        libraryType = "forward"
+                elif pctMapped[2] > 0.75:
+                        libraryType = "reverse"
+                else:
+                        libraryType = "unstranded"
+                return libraryType
+        except:
+                return "didn't run infer library type yet"
+
+def getFeatureCountsStrandParam():
+        libraryType = inferLibraryType()
+        if libraryType == "forward":
+                strandParam = "1"
+        elif libraryType == "reverse":
+                strandParam = "2"
+        else:
+                strandParam = "0"
+        return strandParam
+
+def getTElocalStrandParam():
+        libraryType = inferLibraryType()
+        if libraryType == "forward":
+                strandParam = "forward"
+        elif libraryType == "reverse":
+                strandParam = "reverse"
+        else:
+                strandParam = "no"
+        return strandParam
+
+def getTelescopeStrandParam():
+        libraryType = inferLibraryType()
+        if libraryType == "forward":
+                strandParam = "FR"
+        elif libraryType == "reverse":
+                strandParam = "RF"
+        else:
+                strandParam = "None"
+        return strandParam
 
 
-#PREPROCESSING
+#tag PREPROCESSING
 rule prefetch:
     output:
         sra = temp("rawdata/{sample}/{sample}.sra")
@@ -50,8 +102,8 @@ rule fastqdump:
 
 rule fastp_PE:
     input:
-        r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R1"].iloc[0],
-        r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R2"].iloc[0]
+        r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R1"].iloc[0],
+        r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R1"].iloc[0]
     priority: 100
     threads: 6
     log: "logs/{sample}/fastp.log"
@@ -69,7 +121,7 @@ fastp -i {input.r1} -I {input.r2} -o {output.r1} -O {output.r2} --json {output.j
 
 rule fastp_SE:
     input:
-        r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R1"].iloc[0],
+        r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R1"].iloc[0],
         # r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "R2"].iloc[0]
     priority: 100
     threads: 6
@@ -87,7 +139,7 @@ fastp -i {input.r1} -o {output.r1} --json {output.json} --html {output.html} --t
         """
 
 
-#QC
+#tag QC
 
 rule mycoplasmaCheck:
     input:
@@ -137,7 +189,7 @@ mkdir -p qc/multiqc
 multiqc -f -o qc/multiqc --export ./
         """
 
-#ALIGNMENT
+#tag ALIGNMENT
 rule alignSTAR_PE:
     input:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
@@ -160,6 +212,7 @@ rule alignSTAR_PE:
 STAR --genomeDir {params.index} --readFilesCommand zcat --readFilesIn {input.r1} {input.r2} --outFileNamePrefix {params.outdir} --runThreadN {threads} --winAnchorMultimapNmax 100 --outFilterMultimapNmax 100 > {log.out} 2> {log.err}
         """
 
+#tag COUNTS
 rule featurecounts_genes_PE:
     input:
         primaryBams = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam", sample = samples),
@@ -167,7 +220,7 @@ rule featurecounts_genes_PE:
     output:
         countsmessy = "outs/agg/featurecounts_genes/counts_messy.txt",
         counts = "outs/agg/featurecounts_genes/counts.txt",
-        readassignment = expand("outs/{sample}/star_output/{sample}.sorted.primary.bam.featureCounts", sample = samples)
+        readassignment = expand("outs/agg/featurecounts_genes/{sample}.sorted.primary.bam.featureCounts", sample = samples)
 
     params: 
         gtf = config['annotation_genes'],
@@ -180,20 +233,20 @@ featureCounts -p -s {params.featureCountsstrandparam} -O -T {threads} -t exon -a
 cut -f1,7- {output.countsmessy} | awk 'NR > 1' > {output.counts}
         """
 
-rule filtertogetbamofnofeaturealignments:
-    input:
-        readassignment = "outs/{sample}/star_output/{sample}.sorted.primary.bam.featureCounts",
-        sortedBam = "outs/agg/featurecounts_genes/{sample}.sorted.bam"
-    output:
-        nofeaturefilteredbam = "outs/agg/featurecounts_genes/{sample}.sorted.nofeaturefiltered.bam"
-    conda:
-        "omics"
-    shell:
-        """
-awk '$2 ~ /Unassigned_NoFeatures/ {{print $1}}' {input.readassignment} > {input.readassignment}.nofeatureIDs.txt
-samtools view -b -N {input.readassignment}.nofeatureIDs.txt -o {output.nofeaturefilteredbam} {input.sortedBam}
-samtools stats {output.nofeaturefilteredbam} > {output.nofeaturefilteredbam}.stats
-        """
+# rule filtertogetbamofnofeaturealignments:
+#     input:
+#         readassignment = "outs/agg/featurecounts_genes/{sample}.sorted.primary.bam.featureCounts",
+#         sortedBam = "outs/{sample}/star_output/{sample}.sorted.bam"
+#     output:
+#         nofeaturefilteredbam = "outs/agg/featurecounts_genes/{sample}.sorted.nofeaturefiltered.bam"
+#     conda:
+#         "omics"
+#     shell:
+#         """
+# awk '$2 ~ /Unassigned_NoFeatures/ {{print $1}}' {input.readassignment} > {input.readassignment}.nofeatureIDs.txt
+# samtools view -b -N {input.readassignment}.nofeatureIDs.txt -o {output.nofeaturefilteredbam} {input.sortedBam}
+# samtools stats {output.nofeaturefilteredbam} > {output.nofeaturefilteredbam}.stats
+#         """
 
 
 rule featurecounts_genesandrtes_PE:
@@ -290,7 +343,7 @@ featureCounts -s {params.featureCountsstrandparam} -M -T 8 --primary --ignoreDup
 cut -f1,7- {output.countsmessy} | awk 'NR > 1' > {output.counts}
         """
 
-#ALIGNMENT UTILITIES
+#tag ALIGNMENT UTILITIES
 rule common_sortIndexBam:
     input:
         sam = "outs/{sample}/star_output/Aligned.out.sam"
@@ -327,7 +380,7 @@ samtools view -b -F 0x800 -F 0x100 -F 0x400 {input} > {output.bam}
 samtools index {output.bam}
         """ 
 
-#DIFFERENTIAL EXPRESSION
+#tag DIFFERENTIAL EXPRESSION
 
 rule deseq:
     input:
@@ -353,7 +406,8 @@ rule deseq:
 
 rule deseq_telescope:
     input:
-        counts = expand("outs/{sample}/telescope/telescope-run_stats.tsv", sample = samples)
+        counts = "outs/agg/featurecounts_genes/counts.txt",
+        rte_counts = expand("outs/{sample}/telescope/telescope-run_stats.tsv", sample = samples)
     params:
         sample_table = config["sample_table"],
         contrasts = config["contrasts"],
@@ -366,14 +420,15 @@ rule deseq_telescope:
         mem_mb = 200000,
         runtime = 1000
     conda: "deseq"
+    wildcard_constraints:
+        tecounttype="[A-Za-z0-9_]+"
     output:
         results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results.csv", contrast = config["contrasts"]),
-        counts_normed = "results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv",
-        counts_vst = "results/agg/deseq_telescope/{tecounttype}/vstcounts.csv"
+        counts_normed = "results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv"
     script:
         "scripts/deseq_telescope.R"
 
-#ENRICHMENT ANALYSIS
+#tag ENRICHMENT ANALYSIS
 import os
 rule enrichment_analysis:
     input:
@@ -419,17 +474,20 @@ rule enrichment_analysis_repeats:
     script:
         "scripts/ea_repeats.R"
 
-#REPETITIVE ELEMENTS
+#tag REPETITIVE ELEMENTS
 rule collateBam:
     input:
-        sortedSTARbam = "outs/{sample}/star_output/{sample}.sorted.bam",
+        sortedBam = "outs/{sample}/star_output/{sample}.sorted.bam"
     output:
         collatedbam = "outs/{sample}/star_output/{sample}.collated.bam",
     conda:
         "omics"
+    resources:
+        mem_mb  = 128000,
+        runtime = 60
     shell:
         """
-samtools collate -o {output.collatedbam} {input.sortedSTARbam}
+samtools collate -o {output.collatedbam} {input.sortedBam}
         """
 
 rule telescope:
@@ -461,8 +519,7 @@ telescope assign \
 rule repeatanalysis_telescope:
     input:
         results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
-        counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"]),
-        counts_vst = expand("results/agg/deseq_telescope/{tecounttype}/vstcounts.csv",  tecounttype = config["tecounttypes"])
+        counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"])
     params:
         inputdir = "results/agg/deseq_telescope",
         outputdir = "results/agg/repeatanalysis_telescope"
@@ -473,15 +530,13 @@ rule repeatanalysis_telescope:
         mem_mb = 164000,
         runtime = 300
     output:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
-        vstresultsdf = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
+        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
     script:
         "scripts/repeatanalysis.R"
 
 rule repeatanalysis_plots:
     input:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
-        vstresultsdf = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
+        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
     params:
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
         repeatmasker_annotation = config["r_repeatmasker_annotation"],

@@ -46,8 +46,7 @@ tryCatch(
             "r_repeatmasker_annotation" = conf$r_repeatmasker_annotation
         ), env = globalenv())
         assign("inputs", list(
-            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv",
-            "vstresultsdf" = "results/agg/repeatanalysis_telescope/resultsdfvst.tsv"
+            "resultsdf" = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
         ), env = globalenv())
         assign("outputs", list(
             "outfile" = "results/agg/repeatanalysis_telescope/plots.outfile.txt"
@@ -70,10 +69,7 @@ resultsdf <- resultsdf1 %>%
     left_join(r_annotation_fragmentsjoined) %>%
     left_join(r_repeatmasker_annotation)
 
-vstresultsdf1 <- read_delim(inputs$vstresultsdf, delim = "\t")
-vstresultsdf <- vstresultsdf1 %>%
-    left_join(r_annotation_fragmentsjoined) %>%
-    left_join(r_repeatmasker_annotation)
+
 
 ### ONTOLOGY DEFINITION
 {
@@ -111,13 +107,6 @@ tidydf <- resultsdf %>%
     mutate(condition = map_chr(sample, ~ map[[.]]))
 tidydf$condition <- factor(tidydf$condition, levels = conf$levels)
 
-vsttidydf <- vstresultsdf %>%
-    filter(tecounttype == tecounttype) %>%
-    select(all_of(colnames(resultsdf)[(colnames(resultsdf) %in% peptable$sample_name) | (colnames(resultsdf) %in% colsToKeep)])) %>%
-    pivot_longer(cols = -colsToKeep) %>%
-    rename(sample = name, counts = value) %>%
-    mutate(condition = map_chr(sample, ~ map[[.]]))
-vsttidydf$condition <- factor(tidydf$condition, levels = conf$levels)
 #### PLOTTING FUNCTIONS
 
 pvp <- function(df, facet_var = "ALL", filter_var = "ALL") {
@@ -753,16 +742,18 @@ tryCatch(
             select(-old_gene_id)
 
 
+        # full_join(hotspots_subcompartment) %>%
+
+
         audrey_annotations <- full_join(compartment_rs, compartment_ois) %>%
             full_join(hotspots_compartment) %>%
-            full_join(hotspots_subcompartment) %>%
             full_join(subcompartment_rs) %>%
             full_join(subcompartment_ois) %>%
             full_join(loop_S) %>%
             replace_na(list(hotspots_compartment = "not_hotspot", hotspots_subcompartment = "not_hotspot_sub")) %>%
             mutate(motion_comp_rs = ifelse(str_detect(compartment_rs, "towards"), compartment_rs, "no change")) %>%
             mutate(motion_comp_ois = ifelse(str_detect(compartment_ois, "towards"), compartment_ois, "no change"))
-        audrey_modifiers <- c("compartment_rs", "compartment_ois", "motion_comp_rs", "motion_comp_ois", "hotspots_compartment", "hotspots_subcompartment", "switch_rs", "switch_rs_score", "switch_ois", "InSenUniqueLoop")
+        audrey_modifiers <- c("compartment_rs", "motion_comp_rs", "hotspots_compartment", "switch_rs", "switch_rs_score", "InSenUniqueLoop")
 
 
 
@@ -861,7 +852,9 @@ tryCatch(
                             colsToKeep <- c("gene_id", "family", pvals, l2fc, strictly_annotations, audrey_modifiers)
                             facet_var <- eligible_modifier_combinations[i, ]$facet_var
                             if (!!sym(facet_var) != "ALL") {
-                                groupframe <- groupframe %>% filter(!!sym(facet_var) != ".")
+                                groupframetemp <- groupframe %>% filter(!!sym(facet_var) != ".")
+                            } else {
+                                groupframetemp <- groupframe
                             }
                             for (function_name in plotting_functions) {
                                 tryCatch(
@@ -873,14 +866,14 @@ tryCatch(
                                             plot_width <- 8
                                         }
                                         if (filter_var != "ALL") {
-                                            plot_title <- groupframe %>%
+                                            plot_title <- groupframetemp %>%
                                                 pull(!!sym(filter_var)) %>%
                                                 unique() %>%
                                                 grep(">|Intact", ., value = TRUE)
                                         } else {
                                             plot_title <- group
                                         }
-                                        p <- function_current(groupframe, filter_var = filter_var, facet_var = facet_var) + ggtitle(plot_title)
+                                        p <- function_current(groupframetemp, filter_var = filter_var, facet_var = facet_var) + ggtitle(plot_title)
 
                                         mysave(sprintf("%s/%s/%s/%s/%s/%s/%s_%s_%s.png", outputdir, "select_elements", vst, tecounttype, contrast, function_name, group, filter_var, facet_var), plot_width, plot_height)
                                         select_plots[[vst]][[tecounttype]][[contrast]][[group]][[function_name]][[filter_var]][[facet_var]] <- p
@@ -910,19 +903,166 @@ tryCatch(
     }
 )
 
+contrast_of_interest <- contrasts[1]
+contrast_level_1 <- contrast_of_interest %>%
+    str_split("_") %>%
+    unlist() %>%
+    .[4]
+contrast_level_2 <- contrast_of_interest %>%
+    str_split("_") %>%
+    unlist() %>%
+    .[2]
+contrast_stat <- paste0("stat_", contrast_of_interest)
+contrast_padj <- paste0("padj_", contrast_of_interest)
+contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
+contrast_samples <- peptable %>%
+    filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
+    pull(sample_name)
+condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
 
+audrey_tidyres <- left_join(audrey_annotations, tidydf %>%
+    filter(tecounttype == "telescope_multi") %>%
+    filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+groupframe <- audrey_tidyres
 
-
+groupframe %$% compartment_rs
 colnames(groupframe)
 pf <- groupframe %>%
     group_by(gene_id, condition) %>%
-    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), subcompartment_rs = dplyr::first(subcompartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = condition, values_from = counts) %>%
+    mutate(difSmP = SEN - PRO) %>%
+    mutate(group = ifelse(subcomp == "no change", str_extract(subcompartment_rs, "A|B"), subcomp)) %>%
+    filter(group != "NA") %>%
+    mutate(group = factor(group, levels = c("B", "down", "up", "A"), ordered = FALSE)) %>%
+    mutate(log2fc = log2((SEN + 1) / (PRO + 1)))
+
+
+
+summarydf <- pf %>%
+    group_by(group) %>%
+    summarise(
+        n = n(),
+        mean = mean(difSmP),
+        sd = sd(difSmP),
+        meanlog2fc = mean(log2fc),
+    ) %>%
+    mutate(se = sd / sqrt(n)) %>%
+    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+    ungroup()
+
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme_bw() +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("strip1.png", 6, 4)
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = group, y = log2fc, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = group, y = meanlog2fc), shape = 19) +
+    labs(x = "", y = "log2FC") +
+    theme_bw() +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("strip1.2.png", 6, 4)
+
+p <- pf %>%
+    ggplot() +
+    geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme_bw() +
+    mythemecontrastrev +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) # theme to remove grid lines
+
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("strip1.1.png", 6, 4)
+
+model <- lm(difSmP ~ group, data = pf)
+summary(model)
+amodel <- aov(difSmP ~ group, data = pf)
+TukeyHSD(amodel)
+
+
+p <- pf %>%
+    ggplot() +
+    geom_violin(aes(x = group, y = difSmP), draw_quantiles = .50) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp11.png", 4, 4)
+p <- pf %>%
+    ggplot() +
+    geom_violin(aes(x = group, y = difSmP, fill = loop), draw_quantiles = .50) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp12.png", 6, 4)
+
+
+summarydf <- pf %>%
+    group_by(group, loop) %>%
+    summarise(
+        n = n(),
+        mean = mean(difSmP),
+        sd = sd(difSmP)
+    ) %>%
+    mutate(se = sd / sqrt(n)) %>%
+    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+    ungroup()
+
+p <- pf %>%
+    ggplot() +
+    geom_violin(aes(x = group, y = difSmP, fill = loop)) +
+    geom_point(data = summarydf, aes(x = group, y = mean, group = loop), shape = 19, position = position_dodge(width = 0.9), color = "black") +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp13.png", 6, 4)
+
+p <- pf %>%
+    mutate(loopgroup = paste0(group, "_", loop)) %>%
+    ggplot() +
+    geom_jitter(aes(x = loopgroup, y = difSmP, color = loop), width = 0.2) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp14.png", 6, 4)
+
+pf <- groupframe %>%
+    group_by(gene_id, condition) %>%
+    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), compartment = dplyr::first(compartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
     ungroup() %>%
     pivot_wider(names_from = condition, values_from = counts) %>%
     mutate(difSmP = SEN - PRO)
 
 summarydf <- pf %>%
-    group_by(switch_rs_score) %>%
+    group_by(subcomp) %>%
     summarise(
         n = n(),
         mean = mean(difSmP),
@@ -945,6 +1085,39 @@ p <- pf %>%
 # guides(fill = "none")
 mysave("temp1.png", 6, 4)
 
+p <- pf %>%
+    ggplot() +
+    geom_violin(aes(x = subcomp, y = difSmP, fill = loop), draw_quantiles = c(0.5)) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp15.png", 6, 4)
+p <- pf %>%
+    ggplot() +
+    geom_violin(aes(x = subcomp, y = difSmP), draw_quantiles = c(0.5)) +
+    labs(x = "", y = "SEN - PRO Counts") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    mythemecontrastrev
+# mythemecontrastrev +
+# mytheme +
+# guides(fill = "none")
+mysave("temp16.png", 6, 4)
+
+
+
+summarydf <- pf %>%
+    group_by(switch_rs_score) %>%
+    summarise(
+        n = n(),
+        mean = mean(difSmP),
+        sd = sd(difSmP)
+    ) %>%
+    mutate(se = sd / sqrt(n)) %>%
+    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+    ungroup()
 
 p <- pf %>%
     ggplot() +
@@ -971,7 +1144,7 @@ p <- pf %>%
     scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
 # mytheme +
 # guides(fill = "none")
-mysave("temp1.1.png", 4, 4)
+mysave("temp1.2.png", 4, 4)
 
 p <- pf %>%
     mutate(shape_var = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "Padj < 0.05", "NS"))) %>%
@@ -1045,6 +1218,12 @@ p <- summarydf %>%
 # mytheme +
 # guides(fill = "none")
 mysave("temp4.png", 3, 4)
+
+
+
+p <- plots$telescope_multi$condition_SEN_vs_PRO$L1HS$stripp$l1_intactness_req$ALL
+p <- p + theme_bw() + mytheme + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+mysave("temp21.png", 4, 4)
 
 
 

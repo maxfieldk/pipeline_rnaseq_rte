@@ -1,6 +1,15 @@
 sample_table: "conf/private/sample_table.csv"
 peptable: "conf/private/peptable.csv"
 
+samples:
+  - "PRO1"
+  - "PRO2"
+  - "PRO3"
+  - "SEN1"
+  - "SEN2"
+  - "SEN3"
+
+
 paralellize_bioc: 8
 counttypes:
   - "featurecounts_genes"
@@ -9,6 +18,8 @@ telocaltypes:
   - "telocal_uniq"
 tecounttypes:
   - "telescope_multi"
+
+library_type: PE
 #for illumina truseq stranded, "2" for feature counts; "reverse" for telocal
 # featureCountsstrandparam: "2"
 # telocalstrandparam: "reverse"
@@ -56,4 +67,4 @@ genesets_for_gsea:
 
 genesets_for_heatmaps:
   Senescence: /users/mkelsey/data/ref/genesets/human/mycustom/senescence.txt
-  "InflammatoryGenes": /users/mkelsey/data/ref/genesets/human/mycustom/inflammatory.txt
+  InflammatoryGenes: /users/mkelsey/data/ref/genesets/human/mycustom/inflammatory.txt

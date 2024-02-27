@@ -485,7 +485,7 @@ for (contrast in contrasts) {
     condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
     groups_that_have_been_run <- c()
     groups_not_to_run <- c("AluY")
-    for (ontology in ontologies) {
+    for (ontology in small_ontologies) {
         print(ontology)
         ontology_groups <- r_repeatmasker_annotation %>%
             pull(!!sym(ontology)) %>%
@@ -903,332 +903,339 @@ tryCatch(
     }
 )
 
-contrast_of_interest <- contrasts[1]
-contrast_level_1 <- contrast_of_interest %>%
-    str_split("_") %>%
-    unlist() %>%
-    .[4]
-contrast_level_2 <- contrast_of_interest %>%
-    str_split("_") %>%
-    unlist() %>%
-    .[2]
-contrast_stat <- paste0("stat_", contrast_of_interest)
-contrast_padj <- paste0("padj_", contrast_of_interest)
-contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
-contrast_samples <- peptable %>%
-    filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
-    pull(sample_name)
-condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
+tryCatch(
+    {
+        contrast_of_interest <- contrasts[1]
+        contrast_level_1 <- contrast_of_interest %>%
+            str_split("_") %>%
+            unlist() %>%
+            .[4]
+        contrast_level_2 <- contrast_of_interest %>%
+            str_split("_") %>%
+            unlist() %>%
+            .[2]
+        contrast_stat <- paste0("stat_", contrast_of_interest)
+        contrast_padj <- paste0("padj_", contrast_of_interest)
+        contrast_log2FoldChange <- paste0("log2FoldChange_", contrast_of_interest)
+        contrast_samples <- peptable %>%
+            filter(condition %in% c(contrast_level_1, contrast_level_2)) %>%
+            pull(sample_name)
+        condition_vec <- peptable %>% filter(sample_name %in% contrast_samples) %$% condition
 
-audrey_tidyres <- left_join(audrey_annotations, tidydf %>%
-    filter(tecounttype == "telescope_multi") %>%
-    filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
-groupframe <- audrey_tidyres
+        audrey_tidyres <- left_join(audrey_annotations, tidydf %>%
+            filter(tecounttype == "telescope_multi") %>%
+            filter(rte_subfamily == "L1HS" | rte_subfamily == "L1PA2"))
+        groupframe <- audrey_tidyres
 
-groupframe %$% compartment_rs
-colnames(groupframe)
-pf <- groupframe %>%
-    group_by(gene_id, condition) %>%
-    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), subcompartment_rs = dplyr::first(subcompartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
-    ungroup() %>%
-    pivot_wider(names_from = condition, values_from = counts) %>%
-    mutate(difSmP = SEN - PRO) %>%
-    mutate(group = ifelse(subcomp == "no change", str_extract(subcompartment_rs, "A|B"), subcomp)) %>%
-    filter(group != "NA") %>%
-    mutate(group = factor(group, levels = c("B", "down", "up", "A"), ordered = FALSE)) %>%
-    mutate(log2fc = log2((SEN + 1) / (PRO + 1)))
-
-
-
-summarydf <- pf %>%
-    group_by(group) %>%
-    summarise(
-        n = n(),
-        mean = mean(difSmP),
-        sd = sd(difSmP),
-        meanlog2fc = mean(log2fc),
-    ) %>%
-    mutate(se = sd / sqrt(n)) %>%
-    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
-    ungroup()
-
-
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme_bw() +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("strip1.png", 6, 4)
-
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = group, y = log2fc, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = group, y = meanlog2fc), shape = 19) +
-    labs(x = "", y = "log2FC") +
-    theme_bw() +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("strip1.2.png", 6, 4)
-
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme_bw() +
-    mythemecontrastrev +
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) # theme to remove grid lines
-
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("strip1.1.png", 6, 4)
-
-model <- lm(difSmP ~ group, data = pf)
-summary(model)
-amodel <- aov(difSmP ~ group, data = pf)
-TukeyHSD(amodel)
-
-
-p <- pf %>%
-    ggplot() +
-    geom_violin(aes(x = group, y = difSmP), draw_quantiles = .50) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp11.png", 4, 4)
-p <- pf %>%
-    ggplot() +
-    geom_violin(aes(x = group, y = difSmP, fill = loop), draw_quantiles = .50) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp12.png", 6, 4)
-
-
-summarydf <- pf %>%
-    group_by(group, loop) %>%
-    summarise(
-        n = n(),
-        mean = mean(difSmP),
-        sd = sd(difSmP)
-    ) %>%
-    mutate(se = sd / sqrt(n)) %>%
-    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
-    ungroup()
-
-p <- pf %>%
-    ggplot() +
-    geom_violin(aes(x = group, y = difSmP, fill = loop)) +
-    geom_point(data = summarydf, aes(x = group, y = mean, group = loop), shape = 19, position = position_dodge(width = 0.9), color = "black") +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp13.png", 6, 4)
-
-p <- pf %>%
-    mutate(loopgroup = paste0(group, "_", loop)) %>%
-    ggplot() +
-    geom_jitter(aes(x = loopgroup, y = difSmP, color = loop), width = 0.2) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp14.png", 6, 4)
-
-pf <- groupframe %>%
-    group_by(gene_id, condition) %>%
-    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), compartment = dplyr::first(compartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
-    ungroup() %>%
-    pivot_wider(names_from = condition, values_from = counts) %>%
-    mutate(difSmP = SEN - PRO)
-
-summarydf <- pf %>%
-    group_by(subcomp) %>%
-    summarise(
-        n = n(),
-        mean = mean(difSmP),
-        sd = sd(difSmP)
-    ) %>%
-    mutate(se = sd / sqrt(n)) %>%
-    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
-    ungroup()
-
-
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = subcomp, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = subcomp, y = mean), shape = 19) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp1.png", 6, 4)
-
-p <- pf %>%
-    ggplot() +
-    geom_violin(aes(x = subcomp, y = difSmP, fill = loop), draw_quantiles = c(0.5)) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp15.png", 6, 4)
-p <- pf %>%
-    ggplot() +
-    geom_violin(aes(x = subcomp, y = difSmP), draw_quantiles = c(0.5)) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp16.png", 6, 4)
+        groupframe %$% compartment_rs
+        colnames(groupframe)
+        pf <- groupframe %>%
+            group_by(gene_id, condition) %>%
+            summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), subcompartment_rs = dplyr::first(subcompartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+            ungroup() %>%
+            pivot_wider(names_from = condition, values_from = counts) %>%
+            mutate(difSmP = SEN - PRO) %>%
+            mutate(group = ifelse(subcomp == "no change", str_extract(subcompartment_rs, "A|B"), subcomp)) %>%
+            filter(group != "NA") %>%
+            mutate(group = factor(group, levels = c("B", "down", "up", "A"), ordered = FALSE)) %>%
+            mutate(log2fc = log2((SEN + 1) / (PRO + 1)))
 
 
 
-summarydf <- pf %>%
-    group_by(switch_rs_score) %>%
-    summarise(
-        n = n(),
-        mean = mean(difSmP),
-        sd = sd(difSmP)
-    ) %>%
-    mutate(se = sd / sqrt(n)) %>%
-    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
-    ungroup()
-
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = switch_rs_score, y = mean), shape = 19) +
-    geom_smooth(aes(x = switch_rs_score, y = difSmP), method = "lm", se = FALSE) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp1.1.png", 6, 4)
-
-p <- pf %>%
-    mutate(Significance = ifelse(is.na(pval), "ns", ifelse(pval < 0.05, "Padj < 0.05", "ns"))) %>%
-    mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
-    ggplot() +
-    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = Significance, size = size_var), width = 0.1) +
-    geom_hline(yintercept = 0) +
-    geom_vline(xintercept = 0) +
-    labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
-    mythemecolor1 +
-    scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp1.2.png", 4, 4)
-
-p <- pf %>%
-    mutate(shape_var = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "Padj < 0.05", "NS"))) %>%
-    mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
-    ggplot() +
-    geom_jitter(aes(x = switch_rs_score, y = difSmP, color = shape_var), width = 0.1) +
-    geom_hline(yintercept = 0) +
-    geom_vline(xintercept = 0) +
-    labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
-    mythemecolor +
-    scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp1.2.png", 3, 3)
-
-p <- summarydf %>%
-    ggplot() +
-    geom_bar(aes(x = subcomp, y = mean), stat = "identity") +
-    geom_errorbar(aes(x = subcomp, ymin = mean - se, ymax = mean + se), width = 0.2) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp2.png", 2, 4)
+        summarydf <- pf %>%
+            group_by(group) %>%
+            summarise(
+                n = n(),
+                mean = mean(difSmP),
+                sd = sd(difSmP),
+                meanlog2fc = mean(log2fc),
+            ) %>%
+            mutate(se = sd / sqrt(n)) %>%
+            mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+            ungroup()
 
 
-pf <- groupframe %>%
-    group_by(gene_id, condition) %>%
-    summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
-    ungroup() %>%
-    pivot_wider(names_from = condition, values_from = counts) %>%
-    mutate(difSmP = SEN - PRO) %>%
-    mutate(group = sprintf("%s | %s", subcomp, loop))
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme_bw() +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("strip1.png", 6, 4)
+
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = group, y = log2fc, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = group, y = meanlog2fc), shape = 19) +
+            labs(x = "", y = "log2FC") +
+            theme_bw() +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("strip1.2.png", 6, 4)
+
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = group, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme_bw() +
+            mythemecontrastrev +
+            theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) # theme to remove grid lines
+
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("strip1.1.png", 6, 4)
+
+        model <- lm(difSmP ~ group, data = pf)
+        summary(model)
+        amodel <- aov(difSmP ~ group, data = pf)
+        TukeyHSD(amodel)
 
 
-summarydf <- pf %>%
-    group_by(group) %>%
-    summarise(
-        n = n(),
-        mean = mean(difSmP),
-        sd = sd(difSmP)
-    ) %>%
-    mutate(se = sd / sqrt(n)) %>%
-    mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
-    ungroup() %>%
-    mutate(group = paste0(group, " (n = ", n, ")"))
+        p <- pf %>%
+            ggplot() +
+            geom_violin(aes(x = group, y = difSmP), draw_quantiles = .50) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp11.png", 4, 4)
+        p <- pf %>%
+            ggplot() +
+            geom_violin(aes(x = group, y = difSmP, fill = loop), draw_quantiles = .50) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp12.png", 6, 4)
 
 
-p <- pf %>%
-    ggplot() +
-    geom_jitter(aes(x = group, y = difSmP, color = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
-    geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp3.png", 8, 4)
+        summarydf <- pf %>%
+            group_by(group, loop) %>%
+            summarise(
+                n = n(),
+                mean = mean(difSmP),
+                sd = sd(difSmP)
+            ) %>%
+            mutate(se = sd / sqrt(n)) %>%
+            mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+            ungroup()
 
-p <- summarydf %>%
-    ggplot() +
-    geom_errorbar(aes(x = group, ymin = 0, ymax = mean + se), width = 0.2) +
-    geom_bar(aes(x = group, y = mean), stat = "identity") +
-    labs(x = "", y = "SEN - PRO Counts") +
-    theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
-    anchorbar +
-    mythemecontrastrev
-# mythemecontrastrev +
-# mytheme +
-# guides(fill = "none")
-mysave("temp4.png", 3, 4)
+        p <- pf %>%
+            ggplot() +
+            geom_violin(aes(x = group, y = difSmP, fill = loop)) +
+            geom_point(data = summarydf, aes(x = group, y = mean, group = loop), shape = 19, position = position_dodge(width = 0.9), color = "black") +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp13.png", 6, 4)
+
+        p <- pf %>%
+            mutate(loopgroup = paste0(group, "_", loop)) %>%
+            ggplot() +
+            geom_jitter(aes(x = loopgroup, y = difSmP, color = loop), width = 0.2) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp14.png", 6, 4)
+
+        pf <- groupframe %>%
+            group_by(gene_id, condition) %>%
+            summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), switch_rs_score = dplyr::first(switch_rs_score), compartment = dplyr::first(compartment_rs), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+            ungroup() %>%
+            pivot_wider(names_from = condition, values_from = counts) %>%
+            mutate(difSmP = SEN - PRO)
+
+        summarydf <- pf %>%
+            group_by(subcomp) %>%
+            summarise(
+                n = n(),
+                mean = mean(difSmP),
+                sd = sd(difSmP)
+            ) %>%
+            mutate(se = sd / sqrt(n)) %>%
+            mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+            ungroup()
+
+
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = subcomp, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = subcomp, y = mean), shape = 19) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp1.png", 6, 4)
+
+        p <- pf %>%
+            ggplot() +
+            geom_violin(aes(x = subcomp, y = difSmP, fill = loop), draw_quantiles = c(0.5)) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp15.png", 6, 4)
+        p <- pf %>%
+            ggplot() +
+            geom_violin(aes(x = subcomp, y = difSmP), draw_quantiles = c(0.5)) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp16.png", 6, 4)
 
 
 
-p <- plots$telescope_multi$condition_SEN_vs_PRO$L1HS$stripp$l1_intactness_req$ALL
-p <- p + theme_bw() + mytheme + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
-mysave("temp21.png", 4, 4)
+        summarydf <- pf %>%
+            group_by(switch_rs_score) %>%
+            summarise(
+                n = n(),
+                mean = mean(difSmP),
+                sd = sd(difSmP)
+            ) %>%
+            mutate(se = sd / sqrt(n)) %>%
+            mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+            ungroup()
+
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = switch_rs_score, y = mean), shape = 19) +
+            geom_smooth(aes(x = switch_rs_score, y = difSmP), method = "lm", se = FALSE) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp1.1.png", 6, 4)
+
+        p <- pf %>%
+            mutate(Significance = ifelse(is.na(pval), "ns", ifelse(pval < 0.05, "Padj < 0.05", "ns"))) %>%
+            mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
+            ggplot() +
+            geom_jitter(aes(x = switch_rs_score, y = difSmP, color = loop, shape = Significance, size = size_var), width = 0.1) +
+            geom_hline(yintercept = 0) +
+            geom_vline(xintercept = 0) +
+            labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
+            mythemecolor1 +
+            scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp1.2.png", 4, 4)
+
+        p <- pf %>%
+            mutate(shape_var = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "Padj < 0.05", "NS"))) %>%
+            mutate(size_var = ifelse(is.na(pval), 0.2, -log10(pval))) %>%
+            ggplot() +
+            geom_jitter(aes(x = switch_rs_score, y = difSmP, color = shape_var), width = 0.1) +
+            geom_hline(yintercept = 0) +
+            geom_vline(xintercept = 0) +
+            labs(x = "Subcompartment switch magnitude", y = "SEN - PRO Counts") +
+            mythemecolor +
+            scale_x_continuous(breaks = seq(-3, 7, by = 1)) # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp1.2.png", 3, 3)
+
+        p <- summarydf %>%
+            ggplot() +
+            geom_bar(aes(x = subcomp, y = mean), stat = "identity") +
+            geom_errorbar(aes(x = subcomp, ymin = mean - se, ymax = mean + se), width = 0.2) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp2.png", 2, 4)
+
+
+        pf <- groupframe %>%
+            group_by(gene_id, condition) %>%
+            summarise(counts = sum(counts), pval = dplyr::first(!!sym(contrast_padj)), subcomp = dplyr::first(switch_rs), loop = dplyr::first(InSenUniqueLoop)) %>%
+            ungroup() %>%
+            pivot_wider(names_from = condition, values_from = counts) %>%
+            mutate(difSmP = SEN - PRO) %>%
+            mutate(group = sprintf("%s | %s", subcomp, loop))
+
+
+        summarydf <- pf %>%
+            group_by(group) %>%
+            summarise(
+                n = n(),
+                mean = mean(difSmP),
+                sd = sd(difSmP)
+            ) %>%
+            mutate(se = sd / sqrt(n)) %>%
+            mutate(ic = se * qt((1 - 0.05) / 2 + .5, n - 1)) %>%
+            ungroup() %>%
+            mutate(group = paste0(group, " (n = ", n, ")"))
+
+
+        p <- pf %>%
+            ggplot() +
+            geom_jitter(aes(x = group, y = difSmP, color = ifelse(is.na(pval), "NS", ifelse(pval < 0.05, "S", "NS"))), width = 0.2) +
+            geom_point(data = summarydf, aes(x = group, y = mean), shape = 19) +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp3.png", 8, 4)
+
+        p <- summarydf %>%
+            ggplot() +
+            geom_errorbar(aes(x = group, ymin = 0, ymax = mean + se), width = 0.2) +
+            geom_bar(aes(x = group, y = mean), stat = "identity") +
+            labs(x = "", y = "SEN - PRO Counts") +
+            theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+            anchorbar +
+            mythemecontrastrev
+        # mythemecontrastrev +
+        # mytheme +
+        # guides(fill = "none")
+        mysave("temp4.png", 3, 4)
 
 
 
+        p <- plots$telescope_multi$condition_SEN_vs_PRO$L1HS$stripp$l1_intactness_req$ALL
+        p <- p + theme_bw() + mytheme + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+        mysave("temp21.png", 4, 4)
 
-resultsdf %>% filter(grepl("L1HS", gene_id)) %$% padj_condition_SEN_vs_PRO
+        resultsdf %>% filter(grepl("L1HS", gene_id)) %$% padj_condition_SEN_vs_PRO
+    },
+    error = function(e) {
+        print(e)
+        message("Didn't save select plots")
+    }
+)
+
+
 
 x <- data.frame()
 write.table(x, file = outputs$outfile, col.names = FALSE)

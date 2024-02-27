@@ -65,11 +65,15 @@ RESLIST <- list()
 for (tecounttype in tecounttypes) {
     contrastl <- list()
     for (contrast in contrasts) {
-        ddsres <- read_csv(paste(params$inputdir, tecounttype, contrast, "results.csv", sep = "/"))
+        ddsres_rtes <- read_csv(paste(params$inputdir, tecounttype, contrast, "results_rtes.csv", sep = "/"))
+        ddsres_rtes$type <- "repeat"
+        ddsres_genes <- read_csv(paste(params$inputdir, tecounttype, contrast, "results_genes.csv", sep = "/"))
+        ddsres_genes$type <- "gene"
+        ddsres <- bind_rows(ddsres_rtes, ddsres_genes)
         ddsresmod <- ddsres %>%
             dplyr::rename(gene_id = ...1) %>%
             mutate(Significance = ifelse(padj < 0.05, ifelse(padj < 0.001, "< 0.001", "< 0.05"), "> 0.05")) %>%
-            dplyr::select(c(gene_id, log2FoldChange, stat, padj, Significance)) %>%
+            dplyr::select(c(gene_id, log2FoldChange, stat, padj, Significance, type)) %>%
             dplyr::rename(!!paste0("log2FoldChange_", contrast) := log2FoldChange) %>%
             dplyr::rename(!!paste0("stat_", contrast) := stat) %>%
             dplyr::rename(!!paste0("padj_", contrast) := padj) %>%

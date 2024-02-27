@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from pathlib import Path
-
+#need to use the config["samples"] and not sample_table["sample_name"], deseq order matters and is based on conf$samples
 samples = config["samples"]
 telocaltypes = config["telocaltypes"]
 contrasts = config["contrasts"]
@@ -103,7 +103,7 @@ rule fastqdump:
 rule fastp_PE:
     input:
         r1=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R1"].iloc[0],
-        r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R1"].iloc[0]
+        r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R2"].iloc[0]
     priority: 100
     threads: 6
     log: "logs/{sample}/fastp.log"
@@ -144,6 +144,7 @@ fastp -i {input.r1} -o {output.r1} --json {output.json} --html {output.html} --t
 rule mycoplasmaCheck:
     input:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
+        r2 = "outs/{sample}/trimmedReads/{sample}_2.trimmed.fastq.gz"
     output:
         sam = "qc/mycoplasma/mycoplasma{sample}.sam"
     threads: 12
@@ -154,7 +155,7 @@ rule mycoplasmaCheck:
     shell:
         """
 mkdir -p $(dirname {output.sam})
-bowtie2 --threads 10 -x /users/mkelsey/data/ref/genomes/mycoplasma/mycoplasma_index -1 {input.r1} -S {output.sam}
+bowtie2 --threads 10 -x /users/mkelsey/data/ref/genomes/mycoplasma/mycoplasma_index -1 {input.r1} -2 {input.r2} -S {output.sam}
 samtools stats {output.sam} > {output.sam}.stats.txt
         """
 
@@ -178,7 +179,7 @@ infer_experiment.py -r {params.gtf} -i {input.bam} > {output.librarytype}
 rule multiqc:
     input:
         bams = expand("outs/{sample}/star_output/{sample}.sorted.bam.stats.txt", sample = samples),
-        deseq = expand("results/agg/deseq2/{counttype}outfile.txt", counttype = counttypes)
+        deseq = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"])
     output:
         "qc/multiqc/multiqc_report.html"
     conda:
@@ -221,7 +222,6 @@ rule featurecounts_genes_PE:
         countsmessy = "outs/agg/featurecounts_genes/counts_messy.txt",
         counts = "outs/agg/featurecounts_genes/counts.txt",
         readassignment = expand("outs/agg/featurecounts_genes/{sample}.sorted.primary.bam.featureCounts", sample = samples)
-
     params: 
         gtf = config['annotation_genes'],
         featureCountsstrandparam = getFeatureCountsStrandParam()
@@ -229,7 +229,7 @@ rule featurecounts_genes_PE:
     threads: 4
     shell: 
         """
-featureCounts -p -s {params.featureCountsstrandparam} -O -T {threads} -t exon -a {params.gtf} -o {output.countsmessy} -R CORE  --minOverlap 25 --fraction --primary {input.primaryBams}
+featureCounts -p -s {params.featureCountsstrandparam} -O -M -T {threads} -t exon -a {params.gtf} -o {output.countsmessy} -R CORE  --minOverlap 25 --fraction --primary {input.primaryBams}
 cut -f1,7- {output.countsmessy} | awk 'NR > 1' > {output.counts}
         """
 
@@ -382,26 +382,27 @@ samtools index {output.bam}
 
 #tag DIFFERENTIAL EXPRESSION
 
-rule deseq:
-    input:
-        counts = "outs/agg/{counttype}/counts.txt",
-    params:
-        sample_table = config["sample_table"],
-        contrasts = config["contrasts"],
-        levels = config["levels"],
-        paralellize_bioc = config["paralellize_bioc"],
-        counttype = lambda w: w.counttype,
-        outputdir = "results/agg/deseq2"
-    resources:
-        cpus_per_task =10,
-        mem_mb = 200000,
-        runtime = 1000
-    conda: "deseq"
-    output:
-        results = expand("results/agg/deseq2/{{counttype}}/{contrast}/{resulttype}.csv", contrast = config["contrasts"], resulttype = ["results", "counttablesizenormed"]),
-        outfile = "results/agg/deseq2/{counttype}outfile.txt"
-    script:
-        "scripts/DESeq2.R"
+# rule deseq:
+#     input:
+#         counts = "outs/agg/{counttype}/counts.txt",
+#     params:
+#         sample_table = config["sample_table"],
+#         contrasts = config["contrasts"],
+#         levels = config["levels"],
+#         paralellize_bioc = config["paralellize_bioc"],
+#         genesgtf = config['annotation_genes'],
+#         counttype = lambda w: w.counttype,
+#         outputdir = "results/agg/deseq2"
+#     resources:
+#         cpus_per_task =10,
+#         mem_mb = 200000,
+#         runtime = 1000
+#     conda: "deseq"
+#     output:
+#         results = expand("results/agg/deseq2/{{counttype}}/{contrast}/{resulttype}.csv", contrast = config["contrasts"], resulttype = ["results", "counttablesizenormed"]),
+#         outfile = "results/agg/deseq2/{counttype}outfile.txt"
+#     script:
+#         "scripts/DESeq2.R"
 
 
 rule deseq_telescope:
@@ -423,7 +424,7 @@ rule deseq_telescope:
     wildcard_constraints:
         tecounttype="[A-Za-z0-9_]+"
     output:
-        results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results.csv", contrast = config["contrasts"]),
+        results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results_genes.csv", contrast = config["contrasts"]),
         counts_normed = "results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv"
     script:
         "scripts/deseq_telescope.R"
@@ -432,10 +433,9 @@ rule deseq_telescope:
 import os
 rule enrichment_analysis:
     input:
-        deresults = expand("results/agg/deseq2/featurecounts_genes/{contrast}/results.csv", contrast = config["contrasts"]),
-        normcounttable = expand("results/agg/deseq2/featurecounts_genes/{contrast}/counttablesizenormed.csv", contrast = config["contrasts"])
+        resultsdf ="results/agg/repeatanalysis_telescope/resultsdf.tsv"
     params:
-        inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.deresults[0])),
+        inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.resultsdf[0])),
         contrasts = config["contrasts"],
         genesets_for_heatmaps = config["genesets_for_heatmaps"],
         genesets_for_gsea = config["genesets_for_gsea"],
@@ -454,7 +454,7 @@ rule enrichment_analysis:
 
 rule enrichment_analysis_repeats:
     input:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf ="results/agg/repeatanalysis_telescope/resultsdf.tsv"
     params:
         inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.resultsdf[0])),
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
@@ -516,13 +516,13 @@ telescope assign \
 {params.gtf}
         """
 
-rule repeatanalysis_telescope:
+rule consolidateDeseqResults:
     input:
-        results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
+        results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results_rtes.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
         counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"])
     params:
         inputdir = "results/agg/deseq_telescope",
-        outputdir = "results/agg/repeatanalysis_telescope"
+        outputdir = "results/agg/deseq_telescope"
     conda:
         "repeatanalysis"
     resources:
@@ -530,16 +530,16 @@ rule repeatanalysis_telescope:
         mem_mb = 164000,
         runtime = 300
     output:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf = "results/agg/deseq_telescope/resultsdf.tsv"
     script:
-        "scripts/repeatanalysis.R"
+        "scripts/consolidateDeseqResults.R"
 
 rule repeatanalysis_plots:
     input:
-        resultsdf = "results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf = "results/agg/deseq_telescope/resultsdf.tsv"
     params:
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
-        repeatmasker_annotation = config["r_repeatmasker_annotation"],
+        r_repeatmasker_annotation = config["r_repeatmasker_annotation"],
         contrasts = config["contrasts"],
         tecounttypes = config["tecounttypes"],
         levelslegendmap = config["levelslegendmap"],
@@ -552,7 +552,7 @@ rule repeatanalysis_plots:
         mem_mb = 164000,
         runtime = 300
     output:
-        outfile = "results/agg/repeatanalysis/plots.outfile.txt"
+        outfile = "results/agg/repeatanalysis_telescope/plots.outfile.txt"
     script:
         "scripts/repeatanalysisPlots.R"
     

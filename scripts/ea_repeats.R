@@ -118,7 +118,8 @@ for (contrast in params[["contrasts"]]) {
     for (tecounttype in resultsdf$tecounttype %>% unique()) {
         res <- resultsdf %>%
             filter(tecounttype == tecounttype) %>%
-            arrange(-!!sym(contrast_stat))
+            arrange(-!!sym(contrast_stat)) %>%
+            filter(type == "repeat")
         ordered_by_stat <- setNames(res %>% pull(!!sym(contrast_stat)), res$gene_id) %>% na.omit()
 
         for (ontology in ontologies) {
@@ -203,3 +204,7 @@ for (contrast in params[["contrasts"]]) {
 }
 
 save(EARTEplots, file = sprintf("%s/EARTEplots.RData", params[["outputdir"]]))
+save(gse_results, file = sprintf("%s/gse_results.RData", params[["outputdir"]]))
+
+x <- data.frame()
+write.table(x, file = outputs[["outfile"]], col.names = FALSE)

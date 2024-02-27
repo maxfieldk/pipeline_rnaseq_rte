@@ -1,0 +1,38 @@
+#imports
+import os
+import pandas as pd
+from pathlib import Path
+import csv
+#conf
+configfile: "conf/private/configPrivate.yaml"
+configfile: "conf/shared/configShared.yaml"
+pepfile: "conf/private/project_config.yaml"
+peptable = pep.sample_table
+peptable.to_csv("conf/private/peptable.csv", index = False, quoting=csv.QUOTE_NONNUMERIC)
+
+#workflow parameters
+samples = config["samples"]
+telocaltypes = config["telocaltypes"]
+contrasts = config["contrasts"]
+counttypes = config["counttypes"]
+
+def rally():
+        deseq = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results_genes.csv", tecounttype = config["tecounttypes"], contrast = config["contrasts"])
+        enrichment_analysis = "results/agg/enrichment_analysis/outfile.txt"
+        enrichment_analysis_repeats = expand("results/agg/enrichment_analysis_repeats/{tecounttype}/outfile.txt", tecounttype = config["tecounttypes"])
+        repeatanalysisplots = "results/agg/repeatanalysis_telescope/plots.outfile.txt",
+        qc = [expand("qc/mycoplasma/mycoplasma{sample}.sam", sample = samples), "qc/multiqc/multiqc_report.html"]
+        return [deseq, enrichment_analysis, enrichment_analysis_repeats, repeatanalysisplots, qc]
+rule all:
+    input:
+        rally()
+    default_target: True
+
+
+module mainworkflow:
+        snakefile: "../pipeline_rnaseq/snakefile"
+        config: config
+if config["library_type"] == "PE":
+        use rule * from mainworkflow exclude fastp_SE,alignSTAR_SE,featurecounts_genes_SE,featurecounts_genesandrtes_SE as *
+else:
+        use rule * from mainworkflow exclude fastp_PEalignSTAR_PE,featurecounts_genes_PE,featurecounts_genesandrtes_PE as *

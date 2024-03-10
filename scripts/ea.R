@@ -57,7 +57,7 @@ library(circlize)
 resultsdf1 <- read_delim(inputs$resultsdf, delim = "\t")
 resultsdf1 <- resultsdf1[resultsdf1$gene_id != "__no_feature", ]
 res <- resultsdf1 %>% filter(tecounttype == tecounttype[1])
-res <- res %>% filter(type == "gene")
+res <- res %>% filter(gene_or_te == "gene")
 res %>%
     filter(str_detect(gene_id, "CDKN1A")) %>%
     select(conf$samples)
@@ -65,6 +65,7 @@ res %>%
 genecollections <- names(params[["genesets_for_gsea"]])
 gse_results <- list()
 core_enrichments_for_plot <- list()
+EAplots <- list()
 for (contrast in params[["contrasts"]]) {
     # PREP RESULTS FOR GSEA
     contrast_stat <- paste0("stat_", contrast)
@@ -77,66 +78,73 @@ for (contrast in params[["contrasts"]]) {
 
 
     for (collection in genecollections) {
-        genesets <- read.gmt(params[["genesets_for_gsea"]][[collection]])
-        gse <- GSEA(ordered_by_stat, TERM2GENE = genesets, maxGSSize = 100000, minGSSize = 1)
-        genesettheme <- theme_gray() + theme(axis.text.y = element_text(colour = "black"))
-        p <- dotplot(gse, showCategory = 20) + ggtitle(paste("GSEA", contrast, sep = " ")) + genesettheme + mytheme
-        mysave(sprintf("%s/%s/gsea/%s/dotplot.png", params[["outputdir"]], contrast, collection), w = 6, h = 6, res = 300)
-        EAplots[[contrast]][[collection]][["dot"]] <- p
-
-        p <- cnetplot(gse, foldChange = ordered_by_l2fc, cex_label_category = 2)
-        mysave(sprintf("%s/%s/gsea/%s/cnetplot.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
-        EAplots[[contrast]][[collection]][["cnet"]] <- p
-
-        p <- cnetplot(gse, foldChange = ordered_by_l2fc, cex_label_category = 2, circular = TRUE, colorEdge = TRUE)
-        mysave(sprintf("%s/%s/gsea/%s/cnetplot2.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
-        EAplots[[contrast]][[collection]][["cnet2"]] <- p
-
-        p <- ridgeplot(gse) + ggtitle(paste("GSEA", contrast, sep = " ")) + genesettheme + mytheme
-        mysave(sprintf("%s/%s/gsea/%s/ridgeplot.png", params[["outputdir"]], contrast, collection), w = 6, h = 6, res = 300)
-        EAplots[[contrast]][[collection]][["ridge"]] <- p
-
-        gsep <- pairwise_termsim(gse)
-        p <- emapplot(gsep, color = "enrichmentScore", showCategory = 20, layout = "nicely") + ggtitle(paste("GSEA", contrast, sep = " "))
-        mysave(sprintf("%s/%s/gsea/%s/network.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
-        EAplots[[contrast]][[collection]][["emap"]] <- p
-
-
         tryCatch(
             {
-                for (num in c(5, 10, 15)) {
-                    df <- arrange(gse, -abs(NES)) %>%
-                        group_by(sign(NES)) %>%
-                        slice(1:num)
-                    df <- df@result
+                genesets <- read.gmt(params[["genesets_for_gsea"]][[collection]])
+                gse <- GSEA(ordered_by_stat, TERM2GENE = genesets, maxGSSize = 100000, minGSSize = 1)
+                genesettheme <- theme_gray() + theme(axis.text.y = element_text(colour = "black"))
+                p <- dotplot(gse, showCategory = 20) + ggtitle(paste("GSEA", contrast, sep = " ")) + genesettheme + mytheme
+                mysave(sprintf("%s/%s/gsea/%s/dotplot.png", params[["outputdir"]], contrast, collection), w = 6, h = 6, res = 300)
+                EAplots[[contrast]][[collection]][["dot"]] <- p
 
-                    p <- ggplot(df, aes(NES, fct_reorder(Description, NES), fill = p.adjust)) +
-                        geom_col(orientation = "y") +
-                        scale_fill_continuous(low = "red", high = "blue", guide = guide_colorbar(reverse = TRUE)) +
-                        mytheme +
-                        theme(axis.text.y = element_text(colour = "black")) +
-                        ylab(NULL)
+                p <- cnetplot(gse, foldChange = ordered_by_l2fc, cex_label_category = 2)
+                mysave(sprintf("%s/%s/gsea/%s/cnetplot.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
+                EAplots[[contrast]][[collection]][["cnet"]] <- p
 
-                    mysave(sprintf("%s/%s/gsea/%s/nes%s.png", params[["outputdir"]], contrast, collection, num), w = 8, h = min(num, 7), res = 300)
-                    EAplots[[contrast]][[collection]][["nes"]][[num]] <- p
-                }
+                p <- cnetplot(gse, foldChange = ordered_by_l2fc, cex_label_category = 2, circular = TRUE, colorEdge = TRUE)
+                mysave(sprintf("%s/%s/gsea/%s/cnetplot2.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
+                EAplots[[contrast]][[collection]][["cnet2"]] <- p
+
+                p <- ridgeplot(gse) + ggtitle(paste("GSEA", contrast, sep = " ")) + genesettheme + mytheme
+                mysave(sprintf("%s/%s/gsea/%s/ridgeplot.png", params[["outputdir"]], contrast, collection), w = 6, h = 6, res = 300)
+                EAplots[[contrast]][[collection]][["ridge"]] <- p
+
+                gsep <- pairwise_termsim(gse)
+                p <- emapplot(gsep, color = "enrichmentScore", showCategory = 20, layout = "nicely") + ggtitle(paste("GSEA", contrast, sep = " "))
+                mysave(sprintf("%s/%s/gsea/%s/network.png", params[["outputdir"]], contrast, collection), w = 10, h = 9, res = 300)
+                EAplots[[contrast]][[collection]][["emap"]] <- p
+
+
+                tryCatch(
+                    {
+                        for (num in c(5, 10, 15)) {
+                            df <- arrange(gse, -abs(NES)) %>%
+                                group_by(sign(NES)) %>%
+                                slice(1:num)
+                            df <- df@result
+
+                            p <- ggplot(df, aes(NES, fct_reorder(Description, NES), fill = p.adjust)) +
+                                geom_col(orientation = "y") +
+                                scale_fill_continuous(low = "red", high = "blue", guide = guide_colorbar(reverse = TRUE)) +
+                                mytheme +
+                                theme(axis.text.y = element_text(colour = "black")) +
+                                ylab(NULL)
+
+                            mysave(sprintf("%s/%s/gsea/%s/nes%s.png", params[["outputdir"]], contrast, collection, num), w = 8, h = min(num, 7), res = 300)
+                            EAplots[[contrast]][[collection]][["nes"]][[num]] <- p
+                        }
+                    },
+                    error = function(e) {
+                        print("")
+                    }
+                )
+
+                tryCatch(
+                    {
+                        p <- gseaplot2(gse, geneSetID = "SAUL_SEN_MAYO", pvalue_table = TRUE, subplots = 1:2, ES_geom = "line")
+                        mysave(sprintf("%s/%s/gsea/%s/senmayo_gsea.png", params[["outputdir"]], contrast, collection), w = 8, h = 3, res = 300)
+                        EAplots[[contrast]][[collection]][["senmayo"]] <- p
+                    },
+                    error = function(e) {
+                        print("")
+                    }
+                )
+                gse_results[[contrast]][[collection]] <- gse
             },
             error = function(e) {
-                print("")
+                print("probably no enrichments in this collection")
             }
         )
-
-        tryCatch(
-            {
-                p <- gseaplot2(gse, geneSetID = "SAUL_SEN_MAYO", pvalue_table = TRUE, subplots = 1:2, ES_geom = "line")
-                mysave(sprintf("%s/%s/gsea/%s/senmayo_gsea.png", params[["outputdir"]], contrast, collection), w = 8, h = 3, res = 300)
-                EAplots[[contrast]][[collection]][["senmayo"]] <- p
-            },
-            error = function(e) {
-                print("")
-            }
-        )
-        gse_results[[contrast]][[collection]] <- gse
     }
 }
 # plot core enrichments

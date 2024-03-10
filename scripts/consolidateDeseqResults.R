@@ -2,7 +2,6 @@ library("ggplot2")
 library("RColorBrewer")
 library("magrittr")
 library("cowplot")
-library("org.Hs.eg.db")
 library("ggrepel")
 library("grid")
 library("readr")
@@ -66,21 +65,21 @@ for (tecounttype in tecounttypes) {
     contrastl <- list()
     for (contrast in contrasts) {
         ddsres_rtes <- read_csv(paste(params$inputdir, tecounttype, contrast, "results_rtes.csv", sep = "/"))
-        ddsres_rtes$type <- "repeat"
+        ddsres_rtes$gene_or_te <- "repeat"
         ddsres_genes <- read_csv(paste(params$inputdir, tecounttype, contrast, "results_genes.csv", sep = "/"))
-        ddsres_genes$type <- "gene"
+        ddsres_genes$gene_or_te <- "gene"
         ddsres <- bind_rows(ddsres_rtes, ddsres_genes)
         ddsresmod <- ddsres %>%
             dplyr::rename(gene_id = ...1) %>%
             mutate(Significance = ifelse(padj < 0.05, ifelse(padj < 0.001, "< 0.001", "< 0.05"), "> 0.05")) %>%
-            dplyr::select(c(gene_id, log2FoldChange, stat, padj, Significance, type)) %>%
+            dplyr::select(c(gene_id, log2FoldChange, stat, padj, Significance, gene_or_te)) %>%
             dplyr::rename(!!paste0("log2FoldChange_", contrast) := log2FoldChange) %>%
             dplyr::rename(!!paste0("stat_", contrast) := stat) %>%
             dplyr::rename(!!paste0("padj_", contrast) := padj) %>%
             dplyr::rename(!!paste0("Significance_", contrast) := Significance)
         contrastl[[contrast]] <- ddsresmod
     }
-    ddsrestetype <- Reduce(function(x, y) merge(x, y, by = "gene_id"), contrastl, accumulate = FALSE)
+    ddsrestetype <- Reduce(function(x, y) merge(x, y, by = c("gene_id", "gene_or_te")), contrastl, accumulate = FALSE)
     ddsrestetype <- ddsrestetype %>% mutate(tecounttype = tecounttype)
     RESLIST[[tecounttype]] <- ddsrestetype
 }

@@ -119,7 +119,7 @@ for (contrast in params[["contrasts"]]) {
         res <- resultsdf %>%
             filter(tecounttype == tecounttype) %>%
             arrange(-!!sym(contrast_stat)) %>%
-            filter(type == "repeat")
+            filter(gene_or_te == "repeat")
         ordered_by_stat <- setNames(res %>% pull(!!sym(contrast_stat)), res$gene_id) %>% na.omit()
 
         for (ontology in ontologies) {

@@ -106,7 +106,6 @@ rule fastp_PE:
         r2=lambda wildcards: peptable.loc[peptable["sample_name"] == wildcards.sample, "file_path_R2"].iloc[0]
     priority: 100
     threads: 6
-    log: "logs/{sample}/fastp.log"
     output:
         r1 = "outs/{sample}/trimmedReads/{sample}_1.trimmed.fastq.gz",
         r2 = "outs/{sample}/trimmedReads/{sample}_2.trimmed.fastq.gz",
@@ -424,16 +423,35 @@ rule deseq_telescope:
     wildcard_constraints:
         tecounttype="[A-Za-z0-9_]+"
     output:
-        results = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results_genes.csv", contrast = config["contrasts"]),
+        results_genes = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results_genes.csv", contrast = config["contrasts"]),
+        results_rtes = expand("results/agg/deseq_telescope/{{tecounttype}}/{contrast}/results_rtes.csv", contrast = config["contrasts"]),
         counts_normed = "results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv"
     script:
         "scripts/deseq_telescope.R"
+
+rule consolidateDeseqResults:
+    input:
+        results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results_rtes.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
+        counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"])
+    params:
+        inputdir = "results/agg/deseq_telescope",
+        outputdir = "results/agg/deseq_telescope"
+    conda:
+        "repeatanalysis"
+    resources:
+        cpus_per_task =10,
+        mem_mb = 164000,
+        runtime = 300
+    output:
+        resultsdf = "results/agg/deseq_telescope/resultsdf.tsv"
+    script:
+        "scripts/consolidateDeseqResults.R"
 
 #tag ENRICHMENT ANALYSIS
 import os
 rule enrichment_analysis:
     input:
-        resultsdf ="results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf ="results/agg/deseq_telescope/resultsdf.tsv"
     params:
         inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.resultsdf[0])),
         contrasts = config["contrasts"],
@@ -454,7 +472,7 @@ rule enrichment_analysis:
 
 rule enrichment_analysis_repeats:
     input:
-        resultsdf ="results/agg/repeatanalysis_telescope/resultsdf.tsv"
+        resultsdf ="results/agg/deseq_telescope/resultsdf.tsv"
     params:
         inputdir =lambda w, input: os.path.dirname(os.path.dirname(input.resultsdf[0])),
         r_annotation_fragmentsjoined = config["r_annotation_fragmentsjoined"],
@@ -516,23 +534,7 @@ telescope assign \
 {params.gtf}
         """
 
-rule consolidateDeseqResults:
-    input:
-        results = expand("results/agg/deseq_telescope/{tecounttype}/{contrast}/results_rtes.csv", contrast = config["contrasts"], tecounttype = config["tecounttypes"]),
-        counts_normed = expand("results/agg/deseq_telescope/{tecounttype}/counttablesizenormed.csv", tecounttype = config["tecounttypes"])
-    params:
-        inputdir = "results/agg/deseq_telescope",
-        outputdir = "results/agg/deseq_telescope"
-    conda:
-        "repeatanalysis"
-    resources:
-        cpus_per_task =10,
-        mem_mb = 164000,
-        runtime = 300
-    output:
-        resultsdf = "results/agg/deseq_telescope/resultsdf.tsv"
-    script:
-        "scripts/consolidateDeseqResults.R"
+
 
 rule repeatanalysis_plots:
     input:

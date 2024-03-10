@@ -22,14 +22,6 @@ library(stringr)
 library("dplyr")
 library(EnhancedVolcano)
 
-### functions
-plotSave <- function(path, plot, width = 6, height = 6) {
-    dir.create(dirname(path), recursive = TRUE)
-    png(path, width = width, height = height, units = "in", res = 300)
-    print(plot)
-    dev.off()
-}
-
 
 conf <- c(
     confPrivate <- configr::read.config(file = "conf/private/configPrivate.yaml"),
@@ -112,38 +104,55 @@ cnames <- colnames(cts)
 # rounding since genes are allowed fractional counts
 cts <- cts %>% mutate(across(everything(), ~ as.integer(round(.))))
 cts[rownames(cts) == "CDKN1A", ]
-condition <- coldata$condition
 dds <- DESeqDataSetFromMatrix(
     countData = cts,
     colData = coldata,
     design = ~condition
 )
+
+colData(dds)
 # sizeFactors(dds) <- calculateSizeFactors(unlist(lib_size))
 
 # I estimate the size factors using genes, and not RTEs, since there are 5M repeats and most have very very low counts
 dds <- estimateSizeFactors(dds, controlGenes = rownames(dds) %in% gene_cts$gene_id)
-
+is.na(colnames(dds)) %>% sum()
+colData(dds)
 ddsrtes <- dds[!(rownames(dds) %in% gene_cts$gene_id), ]
 ddsgenes <- dds[rownames(dds) %in% gene_cts$gene_id, ]
 
-# this sets prol as the reference level since its first in the vector
-dds$condition <- factor(dds$condition, levels = levels)
-ddsrtes$condition <- factor(ddsrtes$condition, levels = levels)
-ddsgenes$condition <- factor(ddsgenes$condition, levels = levels)
+
+
 ####
-if (params$paralellize_bioc) {
-    # dds <- DESeq(dds, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
-    ddsrtes <- DESeq(ddsrtes, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
-    ddsgenes <- DESeq(ddsgenes, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
-} else {
-    ddsrtes <- DESeq(ddsrtes)
-    ddsgenes <- DESeq(ddsgenes)
+ddsrteslist <- list()
+ddsgeneslist <- list()
+# determine all the DESeq calls that will need to be run, a different one for each base level that is used in contrasts
+baselevels <- contrasts %>%
+    str_extract("vs_\\w+") %>%
+    str_remove("vs_") %>%
+    unique()
+for (baselevel in baselevels) {
+    levels_temp <- c(baselevel, levels[levels != baselevel])
+    # this sets the reference level since its first in the vector
+    dds$condition <- factor(dds$condition, levels = levels_temp)
+    ddsrtes$condition <- factor(ddsrtes$condition, levels = levels_temp)
+    ddsgenes$condition <- factor(ddsgenes$condition, levels = levels_temp)
+    if (params$paralellize_bioc) {
+        # dds <- DESeq(dds, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
+        ddsrtes <- DESeq(ddsrtes, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
+        ddsgenes <- DESeq(ddsgenes, parallel = TRUE, BPPARAM = MulticoreParam(params$paralellize_bioc))
+        ddsrteslist[[baselevel]] <- ddsrtes
+        ddsgeneslist[[baselevel]] <- ddsgenes
+    } else {
+        ddsrtes <- DESeq(ddsrtes)
+        ddsgenes <- DESeq(ddsgenes)
+        ddsrteslist[[baselevel]] <- ddsrtes
+        ddsgeneslist[[baselevel]] <- ddsgenes
+    }
 }
 
-
 ####
-counttablesizenormedrtes <- counts(ddsrtes, normalized = TRUE)
-counttablesizenormedgenes <- counts(ddsgenes, normalized = TRUE)
+counttablesizenormedrtes <- counts(ddsrteslist[[1]], normalized = TRUE)
+counttablesizenormedgenes <- counts(ddsgeneslist[[1]], normalized = TRUE)
 counttablesizenormed <- rbind(as.data.frame(counttablesizenormedrtes), as.data.frame(counttablesizenormedgenes))
 countspath <- paste(outputdir, tecounttype, "counttablesizenormed.csv", sep = "/")
 dir.create(dirname(countspath), recursive = TRUE, showWarnings = FALSE)
@@ -154,11 +163,14 @@ write.csv(counttablesizenormed, file = countspath)
 deseq_plots <- list()
 for (subset in c("rtes", "genes")) {
     if (subset == "rtes") {
-        ddstemp <- ddsrtes
+        ddstemplist <- ddsrteslist
     } else {
-        ddstemp <- ddsgenes
+        ddstemplist <- ddsgeneslist
     }
     for (contrast in contrasts) {
+        baselevel <- str_extract(contrast, "vs_\\w+") %>% str_remove("vs_")
+        ddstemp <- ddstemplist[[baselevel]]
+        colData(ddstemp)$condition
         res <- results(ddstemp, name = contrast)
         res <- res[order(res$pvalue), ]
         respath <- paste(outputdir, tecounttype, contrast, sprintf("results_%s.csv", subset), sep = "/")
@@ -245,5 +257,5 @@ for (subset in c("rtes", "genes")) {
     deseq_plots[[tecounttype]][[subset]][["dist_heatmap"]] <- p
 }
 save(deseq_plots, file = paste(outputdir, tecounttype, "deseq_plots.RData", sep = "/"))
-save(ddsrtes, file = paste(outputdir, tecounttype, "dds_rtes.RData", sep = "/"))
-save(ddsgenes, file = paste(outputdir, tecounttype, "dds_genes.RData", sep = "/"))
+save(ddsrteslist, file = paste(outputdir, tecounttype, "dds_rtes.RData", sep = "/"))
+save(ddsgeneslist, file = paste(outputdir, tecounttype, "dds_genes.RData", sep = "/"))

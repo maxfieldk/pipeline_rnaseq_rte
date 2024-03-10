@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "path": "../../../../../users/mkelsey/data/rnaseq_rs"
+    },
+    {
+      "path": "../../../../../users/mkelsey/data/pipeline_rnaseq"
+    },
+    {
+      "path": "../../../../../users/mkelsey/data/rnaseq_alexanda"
+    },
+    {
+      "path": "../../../../../users/mkelsey/data/rnaseq_alexandra_with_2019control"
+    }
+  ],
+  "settings": {}
+}

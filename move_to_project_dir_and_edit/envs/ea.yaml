@@ -1,0 +1,21 @@
+name: ea
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - bioconductor-clusterprofiler
+  - r-tidyverse
+  - bioconductor-complexheatmap
+  - r-paletteer
+  - r-ggbeeswarm
+  - bioconductor-pathview
+  - bioconductor-org.hs.eg.db
+  - radian
+  - r-httpgd
+  - ca-certificates
+  - openssl
+  - r-configr
+  - bioconductor-qusage
+  - r-ggstance
+prefix: ea

@@ -1,14 +1,13 @@
 # pipeline_rnaseq_rte
 
-1. Create a project directory
-2. In the same parent directory as project, clone this pipeline_rnaseq_rte directory
-   2.5. Make all of the environments in the envs/ directory. E.g.:
+- Create a project directory
+- In the same parent directory as project, clone this pipeline_rnaseq_rte directory
+- Move the contents of the move_to_project_dir_and_edit directory to your project directory.
+- Make all of the environments in the envs/ directory. E.g.:
+   ```
+   mamba env create --file envs/rseqc.yaml
+   ```
 
-```
-mamba env create --file envs/rseqc.yaml
-```
-
-3. Move the contents of the move_to_project_dir_and_edit directory to your project directory.
 4. Modify the contents of conf/private/sample_table. Make sure sample names do not start with numbers; add an X in front if they do.
 5. Modify the contents of conf/private/configPrivate.yaml; make sure the samples, contrast, library_type are modified properly
 6. Create the rawdata directory, and move your fastqs there. Make sure the naming is consistent with the naming scheme set forth in the conf/private/project_config.yaml i.e.:

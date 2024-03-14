@@ -47,3 +47,9 @@ alias ss="snakemake \
         runtime=300 \
     --jobs 30"
 ```
+
+12. install snakemake executor plugins in your snamemake conda environment, e.g.
+    ```
+    conda activate your_snakemake_env
+    mamba install snakemake-executor-plugin-slurm
+    ```

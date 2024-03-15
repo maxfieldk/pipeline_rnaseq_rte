@@ -7,26 +7,28 @@
    ```
    mamba env create --file envs/rseqc.yaml
    ```
-
-4. Modify the contents of conf/private/sample_table. Make sure sample names do not start with numbers; add an X in front if they do.
-5. Modify the contents of conf/private/configPrivate.yaml; make sure the samples, contrast, library_type are modified properly
-6. Create the rawdata directory, and move your fastqs there. Make sure the naming is consistent with the naming scheme set forth in the conf/private/project_config.yaml i.e.:
+- Modify the contents of conf/private/sample_table. Make sure sample names do not start with numbers; add an X in front if they do.
+- Modify the contents of conf/private/configPrivate.yaml; make sure the samples, contrast, library_type are modified properly
+- Make sure the contents of conf/shared/configShared.yaml are all paths you have access to and don't give you permissions errors
+  ```
+  cat {path}
+  ```
+- Create, in your project directory, the rawdata directory, and move your fastqs there. Make sure the naming is consistent with the naming scheme set forth in the conf/private/project_config.yaml i.e.:
 
 ```
 source1: "rawdata/{sample_name}_R1.fastq.gz" source2: "rawdata/{sample_name}_R2.fastq.gz"
 ```
 
-7. Don't worry about peptable.csv, this is automatically updated each time you call snakemake.
-8. In the project_dir snakefile edit the following path so that it reflects where the pipeline snakefile lives:
+- Don't worry about peptable.csv, this is automatically updated each time you call snakemake.
+- In the project_dir snakefile edit the following path so that it reflects where the pipeline snakefile lives:
 
 ```
     module mainworkflow:
-            snakefile: "../pipeline_rnaseq/snakefile"
+            snakefile: "../pipeline_rnaseq_rte/snakefile"
 ```
 
-9. In the pipeline snakefile, replace all conda environment names with a full path to Maxfield's conda environment; i.e conda: "deseq" -> conda: "/users/mkelsey/anaconda/deseq"
-10. Also, adjust all resource / threads paraters according to the maximum you have availible on your system; i.e threads: 32 -> threads: 10
-11. Create a convenience alias for calling snakemake and sending jobs to slurm: add this to your ~/.bashrc or ~/.zshrc:
+- Adjust all resource / threads parameters according to the maximum you have availible on your system; i.e threads: 32 -> threads: 10
+- Create a convenience alias for calling snakemake and sending jobs to slurm: add this to your ~/.bashrc or ~/.zshrc:
 
 ```
 alias ss="snakemake \
@@ -47,7 +49,7 @@ alias ss="snakemake \
     --jobs 30"
 ```
 
-12. install snakemake executor plugins in your snamemake conda environment, e.g.
+- Install snakemake executor plugins in your snamemake conda environment, e.g.
     ```
     conda activate your_snakemake_env
     mamba install snakemake-executor-plugin-slurm
